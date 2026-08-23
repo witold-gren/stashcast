@@ -804,6 +804,109 @@ def process_media_batch(guids: List[str]):
             write_log(batch_log_path, f'Failed to clean up: {e}')
 
 
+def repair_video_for_item(item, logger=None):
+    """Rewrite an item's video file into an MP4 that Apple Podcasts / iOS can play.
+
+    Fixes episodes downloaded while the format selector allowed Opus audio, which made
+    yt-dlp fall back to a Matroska container that those clients refuse to play. The
+    video stream is copied whenever possible, so this is far cheaper than a re-download.
+
+    Args:
+        item: MediaItem to repair
+        logger: Optional callable(str) for logging
+
+    Returns:
+        bool: True when the file was rewritten, False when nothing needed doing.
+    """
+    from media.service.media_info import get_mime_type, is_ios_compatible_video
+    from media.service.process import remux_to_compatible_mp4
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    if item.media_type != MediaItem.MEDIA_TYPE_VIDEO:
+        return False
+
+    source = item.get_absolute_content_path()
+    if not source or not Path(source).exists():
+        log(f'  No file on disk: {item.title or item.source_url}')
+        return False
+
+    source = Path(source)
+    if is_ios_compatible_video(source):
+        return False
+
+    target = source.with_name('content-repaired.mp4')
+    log(f'Repairing: {item.title or item.source_url}')
+    remux_to_compatible_mp4(source, target, logger=logger)
+
+    # Swap the new file in only after ffmpeg succeeded
+    final = source.with_suffix('.mp4')
+    if source != final:
+        source.unlink()
+    target.replace(final)
+
+    item.content_path = final.name
+    item.mime_type = get_mime_type(final)
+    item.file_size = final.stat().st_size
+    item.save(update_fields=['content_path', 'mime_type', 'file_size', 'updated_at'])
+    log(f'  Now {item.content_path} ({item.file_size} bytes)')
+    return True
+
+
+@db_task()
+def repair_video_file(guid):
+    """Background task: make one item's video playable on Apple Podcasts / iOS."""
+    try:
+        item = MediaItem.objects.get(guid=guid)
+    except MediaItem.DoesNotExist:
+        return
+
+    try:
+        repair_video_for_item(item)
+    except Exception:
+        # One unrepairable file must not take down a batch
+        pass
+
+
+def repair_incompatible_videos(limit=None, logger=None):
+    """Repair every ready video that Apple Podcasts / iOS cannot play.
+
+    Args:
+        limit: Maximum number of items to process (None = all)
+        logger: Optional callable(str) for logging
+
+    Returns:
+        tuple[int, int]: (repaired, skipped)
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    items = MediaItem.objects.filter(
+        media_type=MediaItem.MEDIA_TYPE_VIDEO, status=MediaItem.STATUS_READY
+    ).order_by('-downloaded_at')
+    if limit:
+        items = items[: int(limit)]
+
+    repaired = 0
+    skipped = 0
+    for item in items:
+        try:
+            if repair_video_for_item(item, logger=logger):
+                repaired += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            skipped += 1
+            log(f'  Failed: {item.title or item.source_url} - {e}')
+
+    log(f'Videos: {repaired} repaired, {skipped} left alone')
+    return repaired, skipped
+
+
 def fetch_publish_date_for_item(item, logger=None):
     """Re-query the source platform for an item's publication date and store it.
 

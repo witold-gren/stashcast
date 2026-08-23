@@ -14,7 +14,12 @@ from media.service.config import (
     get_acceptable_video_formats,
     get_ffmpeg_args_for_type,
 )
-from media.service.media_info import extract_ffprobe_metadata
+from media.service.media_info import (
+    IOS_AUDIO_CODECS,
+    IOS_VIDEO_CODECS,
+    extract_ffprobe_metadata,
+    probe_codecs,
+)
 
 
 @dataclass
@@ -395,3 +400,77 @@ def process_subtitle(subtitle_path, output_path, logger=None):
         # Fallback: just copy the original
         shutil.copy2(subtitle_path, output_path)
         return output_path
+
+
+def remux_to_compatible_mp4(input_path, output_path, logger=None):
+    """
+    Rewrite a video into an MP4 that Apple Podcasts / iOS can play.
+
+    Streams that are already in a supported codec are copied rather than re-encoded, so
+    the common case - H.264 video with Opus audio in a Matroska container, which is what
+    yt-dlp produces when AAC is not pinned - only costs an audio re-encode instead of a
+    full transcode.
+
+    Args:
+        input_path: Path to the existing video file
+        output_path: Path for the resulting .mp4
+        logger: Optional callable(str) for logging
+
+    Returns:
+        Path: output_path
+
+    Raises:
+        RuntimeError: When ffmpeg fails.
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    input_path = Path(input_path)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    codecs = probe_codecs(input_path)
+    video_codec = codecs['video_codec']
+    audio_codec = codecs['audio_codec']
+
+    if video_codec in IOS_VIDEO_CODECS:
+        video_args = ['-c:v', 'copy']
+    else:
+        video_args = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']
+
+    if audio_codec is None:
+        audio_args = ['-an']
+    elif audio_codec in IOS_AUDIO_CODECS:
+        audio_args = ['-c:a', 'copy']
+    else:
+        audio_args = ['-c:a', 'aac', '-b:a', '128k']
+
+    log(f'Repacking {input_path.name}: video={video_codec}, audio={audio_codec}')
+    log(f'  video: {" ".join(video_args)} | audio: {" ".join(audio_args)}')
+
+    command = [
+        'ffmpeg',
+        '-y',
+        '-i',
+        str(input_path),
+        # Keep only the first video and audio stream: extra data/subtitle streams from
+        # a Matroska source often have no MP4 equivalent and would abort the mux
+        '-map',
+        '0:v:0',
+        *(['-map', '0:a:0'] if audio_codec else []),
+        *video_args,
+        *audio_args,
+        '-movflags',
+        '+faststart',
+        str(output_path),
+    ]
+
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        tail = (result.stderr or '').strip().splitlines()[-5:]
+        raise RuntimeError(f'ffmpeg failed: {" | ".join(tail)}')
+
+    log(f'  wrote {output_path.name} ({output_path.stat().st_size} bytes)')
+    return output_path

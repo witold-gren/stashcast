@@ -287,16 +287,31 @@ STASHCAST_DEFAULT_YTDLP_ARGS_AUDIO = os.environ.get(
 
 # Video: H.264/AAC in MP4 container for maximum mobile compatibility
 # Limit to 720p to balance quality and file size
-# Format filter: prefer best video ≤720p + best audio, fallback to combined format ≤720p
 # Metadata is embedded, subtitles converted to VTT and embedded
 # Note: --embed-thumbnail and --convert-thumbnails removed (see audio args comment above)
+#
+# The audio selector MUST pin AAC (ext=m4a). A bare "+ba" picks whatever YouTube
+# considers best, which is nowadays Opus in a WebM stream - and Opus cannot be muxed
+# into MP4, so yt-dlp silently falls back to an .mkv container. Apple Podcasts (and
+# iOS generally) plays neither Matroska nor Opus, so such an episode fails with
+# "Cannot play this episode on this device". Fallbacks below keep a download working
+# when the ideal pair is unavailable, in decreasing order of client compatibility.
 STASHCAST_CONVERT_SUBS = ''
 if STASHCAST_WRITE_SUBTITLES or STASHCAST_WRITE_AUTOMATION_SUBTITLES:
     STASHCAST_CONVERT_SUBS = '--convert-subs vtt --embed-subs '
 
 STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO = os.environ.get(
     'STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO',
-    '--format "bv*[height<=720][vcodec^=avc]+ba/b[height<=720]" '
+    '--format "'
+    # H.264 video + AAC audio: muxes into a real MP4 that every client plays
+    'bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/'
+    # A ready-made progressive MP4 (usually H.264 + AAC as well)
+    'b[height<=720][ext=mp4]/'
+    # Any video plus AAC audio - still an MP4 container
+    'bv*[height<=720]+ba[ext=m4a]/'
+    # Last resort: take what there is rather than failing the download
+    'b[height<=720]'
+    '" '
     '--merge-output-format mp4 '
     '--embed-metadata '
     + STASHCAST_CONVERT_SUBS

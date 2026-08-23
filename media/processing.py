@@ -31,6 +31,7 @@ from media.service.download import download_ytdlp as service_download_ytdlp
 # However, process_thumbnail IS needed because --convert-thumbnails was removed due to
 # a yt-dlp race condition (FileNotFoundError when FFmpeg tries to convert before file is ready).
 from media.service.media_info import (
+    get_mime_type,
     extract_ffprobe_metadata,
     get_output_extension,
     resolve_title_from_metadata,
@@ -423,17 +424,10 @@ def process_files(item, tmp_dir, log_path):
         item.subtitle_path = 'subtitles.vtt'
         write_log(log_path, 'Subtitles embedded in video by yt-dlp (--embed-subs for video)')
 
-    # Determine MIME type
+    # Determine MIME type from the actual container, so clients are told the truth
+    # rather than a generic octet-stream they will refuse to play
     if item.content_path:
-        content_file = Path(item.content_path)
-        if content_file.suffix == '.mp3':
-            item.mime_type = 'audio/mpeg'
-        elif content_file.suffix == '.m4a':
-            item.mime_type = 'audio/mp4'
-        elif content_file.suffix == '.mp4':
-            item.mime_type = 'video/mp4'
-        else:
-            item.mime_type = 'application/octet-stream'
+        item.mime_type = get_mime_type(item.content_path)
 
     item.save()
     write_log(log_path, 'Processing complete')

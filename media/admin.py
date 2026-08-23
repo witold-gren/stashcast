@@ -294,6 +294,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'refetch_items',
         'requeue_items',
         'refresh_publish_dates',
+        'repair_videos',
         'regenerate_summaries',
         'archive_items',
         'unarchive_items',
@@ -437,6 +438,32 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         )
 
     refresh_publish_dates.short_description = 'Fetch publication date from source'
+
+    def repair_videos(self, request, queryset):
+        """Rewrite selected videos into an MP4 that Apple Podcasts / iOS can play.
+
+        Files already in the right shape are left untouched. The video stream is copied
+        where possible, so this is much cheaper than downloading the episode again.
+        """
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to repair files.')
+        from media.tasks import repair_video_file
+
+        count = 0
+        for item in queryset.filter(media_type=MediaItem.MEDIA_TYPE_VIDEO):
+            repair_video_file(item.guid)
+            count += 1
+
+        if not count:
+            self.message_user(request, 'No video items selected.')
+            return
+        self.message_user(
+            request,
+            f'Checking {count} video(s) in the background; anything that cannot play on '
+            f'Apple Podcasts is repacked as MP4/H.264/AAC.',
+        )
+
+    repair_videos.short_description = 'Repair video for Apple Podcasts / iOS'
 
     def regenerate_summaries(self, request, queryset):
         if is_demo_readonly(request.user):

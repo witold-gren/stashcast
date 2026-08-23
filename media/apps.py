@@ -61,6 +61,11 @@ class MediaConfig(AppConfig):
 
     def ready(self):
         """Import signals when the app is ready"""
+        # Registers cleanup_media_files (pre_delete), which removes an item's directory
+        # from disk. Without this import the receiver is never connected and deleting
+        # items leaves their media files orphaned.
+        from media import signals  # noqa: F401
+
         if GIT_INFO['commit_sha_short']:
             logger.info(
                 "StashCast commit=%s branch=%s message=%s",

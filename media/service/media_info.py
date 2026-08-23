@@ -7,8 +7,9 @@ Centralizes ffprobe parsing and extension-based media detection.
 import datetime
 import json
 import subprocess
+from pathlib import Path
 
-from media.service.constants import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
+from media.service.constants import AUDIO_EXTENSIONS, MIME_TYPES, VIDEO_EXTENSIONS
 from media.service.config import get_target_audio_format, get_target_video_format
 
 GENERIC_TITLES = {'content', 'downloaded-media', 'untitled', None, ''}
@@ -217,3 +218,98 @@ def parse_publish_date(info):
             return parsed.replace(tzinfo=datetime.timezone.utc)
 
     return None
+
+
+def get_mime_type(path_or_extension):
+    """
+    MIME type for a media file, based on its container extension.
+
+    Args:
+        path_or_extension: File path or bare extension
+
+    Returns:
+        str: MIME type, or 'application/octet-stream' for unknown containers.
+    """
+    ext = normalize_extension(str(path_or_extension).rsplit('.', 1)[-1])
+    return MIME_TYPES.get(ext, 'application/octet-stream')
+
+
+# Codecs Apple Podcasts / iOS can play inside an MP4 container
+IOS_VIDEO_CODECS = {'h264'}
+IOS_AUDIO_CODECS = {'aac'}
+
+
+def probe_codecs(file_path):
+    """
+    Read the video and audio codec names from a media file.
+
+    ``extract_ffprobe_metadata`` deliberately returns only duration and tags; this is
+    for the cases where the codecs themselves matter, e.g. deciding whether a file can
+    be stream-copied into an MP4 or has to be re-encoded.
+
+    Args:
+        file_path: Path to the media file
+
+    Returns:
+        dict: {'video_codec': str|None, 'audio_codec': str|None}. Both None when the
+        file cannot be probed.
+    """
+    try:
+        result = subprocess.run(
+            [
+                'ffprobe',
+                '-v',
+                'quiet',
+                '-print_format',
+                'json',
+                '-show_streams',
+                str(file_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        streams = json.loads(result.stdout).get('streams', [])
+    except Exception:
+        return {'video_codec': None, 'audio_codec': None}
+
+    video_codec = None
+    audio_codec = None
+    for stream in streams:
+        kind = stream.get('codec_type')
+        name = stream.get('codec_name')
+        if kind == 'video' and video_codec is None:
+            video_codec = name
+        elif kind == 'audio' and audio_codec is None:
+            audio_codec = name
+
+    return {'video_codec': video_codec, 'audio_codec': audio_codec}
+
+
+def is_ios_compatible_video(file_path):
+    """
+    Whether a video file should play in Apple Podcasts / iOS as-is.
+
+    Requires an MP4 container with H.264 video and AAC audio. A Matroska container or
+    Opus audio - what yt-dlp produces when AAC is not pinned - fails on those clients
+    with "Cannot play this episode on this device".
+
+    Args:
+        file_path: Path to the media file
+
+    Returns:
+        bool
+    """
+    if normalize_extension(Path(file_path).suffix) != '.mp4':
+        return False
+
+    codecs = probe_codecs(file_path)
+    if not codecs['video_codec']:
+        return False
+    if codecs['video_codec'] not in IOS_VIDEO_CODECS:
+        return False
+    # A video with no audio track at all is still playable
+    if codecs['audio_codec'] and codecs['audio_codec'] not in IOS_AUDIO_CODECS:
+        return False
+    return True

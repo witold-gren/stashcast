@@ -409,6 +409,13 @@ See [docs/DOWNLOAD_QUEUE.md](docs/DOWNLOAD_QUEUE.md) for how the pacing and retr
 - `STASHCAST_STUCK_TIMEOUT_MINUTES`: Idle time after which an in-progress item is requeued (default: 30)
 - `STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS`: Heartbeat age at which the worker is reported down (default: 180)
 
+##### Video playback on Apple Podcasts / iOS
+
+If a downloaded video fails with "Cannot play this episode on this device", see
+[docs/VIDEO_COMPATIBILITY.md](docs/VIDEO_COMPATIBILITY.md) — the default video format now
+pins AAC audio so downloads land in a real MP4, and `./manage.py repair_videos` fixes
+episodes fetched before that.
+
 ##### YouTube download errors (403 Forbidden, bot checks)
 
 See [docs/YOUTUBE_AUTH.md](docs/YOUTUBE_AUTH.md) for the full walkthrough.
@@ -420,6 +427,24 @@ See [docs/YOUTUBE_AUTH.md](docs/YOUTUBE_AUTH.md) for the full walkthrough.
 - `STASHCAST_YTDLP_PLAYER_CLIENTS`: Player clients retried after a 403
 - `STASHCAST_YTDLP_IMPERSONATE`: Browser TLS fingerprint to impersonate, e.g. `chrome`
 
+
+## Housekeeping
+
+Deleting a media item removes its files from disk automatically (including bulk deletes
+and the admin's "delete selected" action).
+
+Items deleted before this was wired up left their directories behind. List and remove
+those leftovers with:
+
+```bash
+./manage.py cleanup_orphans --dry-run   # list orphaned directories and their size
+./manage.py cleanup_orphans             # delete them (asks for confirmation)
+./manage.py cleanup_orphans --force     # delete without asking
+```
+
+Group cover images (`group-images/`) and in-flight download directories (`tmp-*`,
+`batch-*`) are never touched. For abandoned download temporaries specifically, use
+`./manage.py cleanup_tmp`.
 
 ## Development
 
