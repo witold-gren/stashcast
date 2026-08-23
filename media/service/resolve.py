@@ -5,6 +5,7 @@ Handles prefetching metadata and determining the actual media type.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlparse
@@ -12,7 +13,7 @@ from urllib.parse import urlparse
 import yt_dlp
 from django.conf import settings
 
-from media.service.media_info import get_streams_from_extension
+from media.service.media_info import get_streams_from_extension, parse_publish_date
 from media.service.constants import MEDIA_EXTENSIONS
 
 
@@ -85,6 +86,8 @@ class PrefetchResult:
     extractor: Optional[str] = None
     external_id: Optional[str] = None
     file_extension: Optional[str] = None
+    # Original publication date on the source platform (not the download date)
+    publish_date: Optional[datetime] = None
     # Multi-item support
     entries: List[EntryInfo] = field(default_factory=list)
     is_multiple: bool = False
@@ -329,6 +332,7 @@ def _prefetch_ytdlp_inner(url, logger=None):
         result.extractor = info.get('extractor', '')
         result.external_id = info.get('id', '')
         result.webpage_url = info.get('webpage_url', url)
+        result.publish_date = parse_publish_date(info)
 
         # Check for video/audio streams
         formats = info.get('formats', [])
@@ -342,6 +346,7 @@ def _prefetch_ytdlp_inner(url, logger=None):
 
         if logger:
             logger(f'yt-dlp metadata extracted: {result.title}')
+            logger(f'Published: {result.publish_date or "unknown"}')
             logger(f'Extractor: {result.extractor}')
             logger(f'Has video: {result.has_video_streams}, Has audio: {result.has_audio_streams}')
 

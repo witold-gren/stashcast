@@ -26,8 +26,11 @@ data/
 data_docker/
 
 # Environment
-# .env
-# .env.local
+# Never bake .env into the image: it would ship secrets inside the image and make
+# config changes require a rebuild. Settings are injected at runtime via the
+# env_file entries in docker-compose*.yml instead.
+.env
+.env.local
 .git
 
 # IDE

@@ -389,6 +389,33 @@ STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS = int(
     os.environ.get('STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS', '5')
 )
 
+# --- Paced download queue -------------------------------------------------------
+# Items found by the YouTube channel sync are not enqueued all at once (that floods
+# the Huey workers). They are created with status QUEUED and released one batch per
+# interval by the process_download_queue periodic task.
+
+# How often the queue releases work, in minutes. Clamped to 1..59 so the '*/N'
+# minute crontab expression stays valid.
+STASHCAST_DOWNLOAD_QUEUE_MINUTES = int(os.environ.get('STASHCAST_DOWNLOAD_QUEUE_MINUTES', '5'))
+
+# How many queued items to release per interval. Raise it to backfill a new channel
+# faster; 1 keeps the load as low as possible.
+STASHCAST_DOWNLOAD_QUEUE_BATCH = int(os.environ.get('STASHCAST_DOWNLOAD_QUEUE_BATCH', '1'))
+
+# How many times a download may be attempted before the item is marked ERROR.
+# 1 disables retrying.
+STASHCAST_DOWNLOAD_MAX_ATTEMPTS = int(os.environ.get('STASHCAST_DOWNLOAD_MAX_ATTEMPTS', '3'))
+
+# After this many minutes without an update, an item still sitting in PREFETCHING /
+# DOWNLOADING / PROCESSING is treated as abandoned (worker died mid-task) and requeued.
+STASHCAST_STUCK_TIMEOUT_MINUTES = int(os.environ.get('STASHCAST_STUCK_TIMEOUT_MINUTES', '30'))
+
+# The worker writes a heartbeat file every minute. If it is older than this, the UI
+# reports "worker not running" instead of guessing from how long an item has waited.
+STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS = int(
+    os.environ.get('STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS', '180')
+)
+
 # Ensure media directories exist
 os.makedirs(STASHCAST_MEDIA_DIR, exist_ok=True)
 

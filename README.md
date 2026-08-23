@@ -33,6 +33,7 @@ I created this since friends and family often send me links to listen to a singl
 - Download media from any URL supported by yt-dlp, direct media URLs, HTML with embedded media, playlists, multiple embeds
 - **Multi-language support** - UI and video subtitles in your preferred language (see [i18n docs](docs/INTERNATIONALIZATION.md))
 - Async background processing via task queue
+- **YouTube channel subscriptions** with a paced download queue and automatic retries (see [download queue docs](docs/DOWNLOAD_QUEUE.md))
 - Automatic media type detection (audio/video)
 - Podcast feed generation (RSS/Atom) for audio and video
 - Optional transcoding via ffmpeg
@@ -70,10 +71,28 @@ I created this since friends and family often send me links to listen to a singl
 
 ## Run in docker
 
+Configure the app. All settings are read from `.env`, so this is the only file you edit
+to change configuration - the compose files do not need touching.
+
+```bash
+cp .env.example .env
+# At minimum set STASHCAST_USER_TOKEN; see "Environment Variables" below for the rest
+```
+
+`STASHCAST_DATA_DIR` is the one setting the compose file pins itself (to the path inside
+the container), so whatever `.env` says for it is ignored under Docker.
+
 Start the service.
 
 ```bash
 docker compose up
+```
+
+After changing `.env`, recreate the containers to pick up the new values - no rebuild
+needed:
+
+```bash
+docker compose up -d
 ```
 
 Set up the db and create a super user
@@ -377,6 +396,29 @@ See `.env.example` for all available configuration options.
 - `STASHCAST_SLUG_MAX_CHARS`: Max characters in slug (default: 40)
 - `STASHCAST_WRITE_SUBTITLES`: Download subtitles for video (default: True)
 - `STASHCAST_WRITE_AUTOMATION_SUBTITLES`: Download automation subtitles for video (default: True)
+
+##### YouTube channels and the download queue
+
+See [docs/DOWNLOAD_QUEUE.md](docs/DOWNLOAD_QUEUE.md) for how the pacing and retries work.
+
+- `STASHCAST_YOUTUBE_SYNC_HOURS`: How often channels are checked for new uploads (default: 3)
+- `STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS`: How many recent uploads each check considers (default: 5)
+- `STASHCAST_DOWNLOAD_QUEUE_MINUTES`: How often the queue releases downloads (default: 5)
+- `STASHCAST_DOWNLOAD_QUEUE_BATCH`: How many downloads released per interval (default: 1)
+- `STASHCAST_DOWNLOAD_MAX_ATTEMPTS`: Attempts before an item is marked as failed (default: 3)
+- `STASHCAST_STUCK_TIMEOUT_MINUTES`: Idle time after which an in-progress item is requeued (default: 30)
+- `STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS`: Heartbeat age at which the worker is reported down (default: 180)
+
+##### YouTube download errors (403 Forbidden, bot checks)
+
+See [docs/YOUTUBE_AUTH.md](docs/YOUTUBE_AUTH.md) for the full walkthrough.
+
+- `STASHCAST_YTDLP_PROXY`: Proxy for all yt-dlp traffic
+- `STASHCAST_YTDLP_COOKIES_FILE`: Path to a Netscape `cookies.txt` for YouTube
+- `STASHCAST_YTDLP_COOKIES_FROM_BROWSER`: Read cookies from a local browser profile
+- `STASHCAST_YTDLP_JS_RUNTIMES`: JavaScript runtime override (auto-detects `deno`)
+- `STASHCAST_YTDLP_PLAYER_CLIENTS`: Player clients retried after a 403
+- `STASHCAST_YTDLP_IMPERSONATE`: Browser TLS fingerprint to impersonate, e.g. `chrome`
 
 
 ## Development

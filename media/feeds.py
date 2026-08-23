@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.syndication.views import Feed
+from django.db.models import F
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404
 from django.templatetags.static import static
@@ -8,6 +9,15 @@ from django.utils.feedgenerator import Rss201rev2Feed
 
 from media.models import MediaGroup, MediaItem
 from media.utils import build_group_image_url, build_media_url
+
+# Feed order: newest by the source platform's publication date. nulls_last is explicit
+# because databases disagree on where NULLs go in a DESC sort (SQLite puts them last,
+# PostgreSQL first) - without it, items whose date is not filled in yet would jump to
+# the top of the podcast feed. Those fall back to the download date among themselves.
+_PUBLISH_ORDER = (
+    F('publish_date').desc(nulls_last=True),
+    F('downloaded_at').desc(nulls_last=True),
+)
 
 
 class StashcastRSSFeed(Rss201rev2Feed):
@@ -244,7 +254,7 @@ class AudioFeed(BaseFeed):
     logo_filename = 'feed-audio.png'
 
     def items(self):
-        return self.get_queryset().order_by('-publish_date', '-downloaded_at')[:100]
+        return self.get_queryset().order_by(*_PUBLISH_ORDER)[:100]
 
     def get_queryset(self, obj=None):
         return MediaItem.objects.filter(
@@ -261,7 +271,7 @@ class VideoFeed(BaseFeed):
     logo_filename = 'feed-video.png'
 
     def items(self):
-        return self.get_queryset().order_by('-publish_date', '-downloaded_at')[:100]
+        return self.get_queryset().order_by(*_PUBLISH_ORDER)[:100]
 
     def get_queryset(self, obj=None):
         return MediaItem.objects.filter(
@@ -278,7 +288,7 @@ class CombinedFeed(BaseFeed):
     logo_filename = 'feed-combined.png'
 
     def items(self):
-        return self.get_queryset().order_by('-publish_date', '-downloaded_at')[:100]
+        return self.get_queryset().order_by(*_PUBLISH_ORDER)[:100]
 
 
 class ArchiveFeed(BaseFeed):
@@ -293,7 +303,9 @@ class ArchiveFeed(BaseFeed):
         return MediaItem.objects.filter(status=MediaItem.STATUS_ARCHIVED)
 
     def items(self):
-        return self.get_queryset().order_by('-archived_at', '-publish_date')[:100]
+        return self.get_queryset().order_by(
+            '-archived_at', F('publish_date').desc(nulls_last=True)
+        )[:100]
 
 
 class GroupFeed(BaseFeed):
@@ -336,4 +348,4 @@ class GroupFeed(BaseFeed):
         return qs
 
     def items(self, obj):
-        return self.get_queryset(obj).order_by('-publish_date', '-downloaded_at')[:100]
+        return self.get_queryset(obj).order_by(*_PUBLISH_ORDER)[:100]

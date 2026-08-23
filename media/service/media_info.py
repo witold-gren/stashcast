@@ -4,6 +4,7 @@ Media metadata and type helpers.
 Centralizes ffprobe parsing and extension-based media detection.
 """
 
+import datetime
 import json
 import subprocess
 
@@ -177,3 +178,42 @@ def get_output_extension(resolved_type, source_extension=None):
             return '.mp3'
         return get_target_audio_format()
     return get_target_video_format()
+
+
+def parse_publish_date(info):
+    """
+    Extract the original publication date from a yt-dlp info dict.
+
+    This is the date the video/episode went up on the source platform, which is what
+    a podcast client should show - not the date we downloaded it.
+
+    Fields are tried most-precise first: the epoch timestamps carry a time of day,
+    while the ``YYYYMMDD`` strings only pin the day and land on midnight UTC.
+
+    Args:
+        info: yt-dlp info dict (or any mapping with the same keys)
+
+    Returns:
+        datetime.datetime in UTC (timezone-aware), or None when no date is available.
+    """
+    if not info:
+        return None
+
+    for key in ('timestamp', 'release_timestamp'):
+        value = info.get(key)
+        if value:
+            try:
+                return datetime.datetime.fromtimestamp(int(value), tz=datetime.timezone.utc)
+            except (ValueError, TypeError, OSError, OverflowError):
+                pass
+
+    for key in ('upload_date', 'release_date'):
+        value = info.get(key)
+        if value:
+            try:
+                parsed = datetime.datetime.strptime(str(value).strip(), '%Y%m%d')
+            except (ValueError, TypeError):
+                continue
+            return parsed.replace(tzinfo=datetime.timezone.utc)
+
+    return None

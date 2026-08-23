@@ -1,9 +1,12 @@
 import os
 import shutil
+import time
+from datetime import timedelta
 from pathlib import Path
 from typing import List
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 from huey import crontab
 from huey.contrib.djhuey import db_periodic_task, db_task
@@ -42,6 +45,184 @@ def check_episode_limit():
     return None
 
 
+def _backoff_delay_minutes(attempts):
+    """Minutes to wait before retry number ``attempts``, growing exponentially.
+
+    Starts at the queue interval and doubles per attempt, capped at 6 hours so a
+    permanently broken URL cannot push its retry arbitrarily far into the future.
+    """
+    base = max(1, int(settings.STASHCAST_DOWNLOAD_QUEUE_MINUTES))
+    return min(base * (2 ** max(0, attempts - 1)), 6 * 60)
+
+
+def schedule_retry_or_fail(item, reason):
+    """Requeue a failed item, or mark it ERROR once its attempts are exhausted.
+
+    Args:
+        item: MediaItem whose download_attempts already includes the failed attempt
+        reason: Error message to store on the item
+
+    Returns:
+        bool: True when the item was requeued, False when it was marked ERROR.
+    """
+    max_attempts = max(1, int(settings.STASHCAST_DOWNLOAD_MAX_ATTEMPTS))
+
+    if item.download_attempts >= max_attempts:
+        item.status = MediaItem.STATUS_ERROR
+        item.error_message = f'{reason} (gave up after {item.download_attempts} attempt(s))'
+        item.next_attempt_at = None
+        item.save()
+        return False
+
+    delay = _backoff_delay_minutes(item.download_attempts)
+    item.status = MediaItem.STATUS_QUEUED
+    item.error_message = (
+        f'{reason} (attempt {item.download_attempts}/{max_attempts}, retrying in {delay} min)'
+    )
+    item.next_attempt_at = timezone.now() + timedelta(minutes=delay)
+    item.save()
+    return True
+
+
+def heartbeat_path():
+    """Path of the file the worker touches to prove it is alive."""
+    return Path(settings.STASHCAST_DATA_DIR) / 'worker-heartbeat'
+
+
+def worker_is_alive():
+    """True when a Huey worker wrote its heartbeat recently enough.
+
+    Replaces the old "item has waited too long, so the worker must be down" guess,
+    which could not tell a dead worker from a busy one.
+    """
+    path = heartbeat_path()
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return False
+    return age <= settings.STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS
+
+
+def release_download_queue(limit=None, logger=None):
+    """Hand a download slot to the oldest queued items that are due.
+
+    This is what keeps a freshly added YouTube channel from flooding the workers:
+    items sit in STATUS_QUEUED and only a small batch is enqueued per interval.
+
+    Args:
+        limit: How many items to release (default: STASHCAST_DOWNLOAD_QUEUE_BATCH)
+        logger: Optional callable(message) for logging
+
+    Returns:
+        list[MediaItem]: The items that were enqueued.
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    if limit is None:
+        limit = settings.STASHCAST_DOWNLOAD_QUEUE_BATCH
+    limit = max(1, int(limit))
+
+    # An item is due when it has no backoff deadline or the deadline has passed
+    now = timezone.now()
+    due = MediaItem.objects.filter(status=MediaItem.STATUS_QUEUED).filter(
+        Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now)
+    )
+
+    # Oldest first, so a backlog drains in the order it arrived
+    batch = list(due.order_by('created_at')[:limit])
+    if not batch:
+        log('Download queue: nothing due')
+        return []
+
+    waiting = due.count()
+    log(f'Download queue: releasing {len(batch)} of {waiting} due item(s)')
+
+    for item in batch:
+        # Claim it before enqueuing so a second run cannot release it twice
+        item.status = MediaItem.STATUS_PREFETCHING
+        item.save(update_fields=['status', 'updated_at'])
+        log(f'  Enqueued: {item.title or item.source_url}')
+        process_media(item.guid)
+
+    return batch
+
+
+def recover_stuck_items(logger=None):
+    """Requeue items abandoned by a worker that died mid-task.
+
+    Without this, an item left in PREFETCHING / DOWNLOADING / PROCESSING stays there
+    forever and has to be re-synced by hand.
+
+    Args:
+        logger: Optional callable(message) for logging
+
+    Returns:
+        list[MediaItem]: The items that were requeued or failed.
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    timeout = max(1, int(settings.STASHCAST_STUCK_TIMEOUT_MINUTES))
+    cutoff = timezone.now() - timedelta(minutes=timeout)
+
+    stuck = MediaItem.objects.filter(
+        status__in=MediaItem.IN_PROGRESS_STATUSES, updated_at__lt=cutoff
+    )
+
+    recovered = []
+    for item in stuck:
+        reason = f'Abandoned in {item.status} for over {timeout} min (worker likely died)'
+        # Count the abandoned attempt here: a worker that died before process_media
+        # ran never incremented it, and without this the item would bounce between
+        # QUEUED and PREFETCHING forever instead of eventually giving up. An attempt
+        # that did start is counted twice, which only costs one retry.
+        item.download_attempts += 1
+        requeued = schedule_retry_or_fail(item, reason)
+        log(f'  {"Requeued" if requeued else "Failed"}: {item.title or item.source_url}')
+        recovered.append(item)
+
+    if recovered:
+        log(f'Recovered {len(recovered)} stuck item(s)')
+    return recovered
+
+
+def retry_failed_items(logger=None):
+    """Give every ERROR item a fresh set of attempts and put it back in the queue.
+
+    Manual escape hatch for the "download failed, now it just sits there" case -
+    exposed as ``./manage.py download_queue --retry-errors``.
+
+    Args:
+        logger: Optional callable(message) for logging
+
+    Returns:
+        list[MediaItem]: The items that were requeued.
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    failed = MediaItem.objects.filter(status=MediaItem.STATUS_ERROR)
+    requeued = []
+    for item in failed:
+        item.status = MediaItem.STATUS_QUEUED
+        item.download_attempts = 0
+        item.next_attempt_at = None
+        item.error_message = ''
+        item.save()
+        log(f'  Requeued: {item.title or item.source_url}')
+        requeued.append(item)
+
+    log(f'Requeued {len(requeued)} failed item(s)')
+    return requeued
+
+
 @db_task()
 def process_media(guid):
     """
@@ -70,20 +251,18 @@ def process_media(guid):
         item.save()
         return
 
-    # Check for worker timeout: if task was enqueued but worker wasn't running
-    # Items can get stuck in PREFETCHING if worker is down
-    now = timezone.now()
-    time_since_update = now - item.updated_at
+    # NOTE: there used to be a "stuck in PREFETCHING for >30s means the worker is
+    # down" check here. It fired on a healthy but busy queue - stash_url saves the
+    # item (updated_at = now) before enqueuing, so anything waiting behind other
+    # downloads was failed the moment a worker picked it up. Worker liveness is now
+    # reported by the heartbeat file (see worker_is_alive), and abandoned items are
+    # requeued by recover_stuck_items.
 
-    if item.status == MediaItem.STATUS_PREFETCHING and time_since_update.total_seconds() > 30:
-        item.status = MediaItem.STATUS_ERROR
-        seconds = int(time_since_update.total_seconds())
-        item.error_message = (
-            f'Worker timeout: Item stuck in PREFETCHING for {seconds} seconds. '
-            'Huey worker may not be running. Start with: python manage.py run_huey'
-        )
-        item.save()
-        return
+    # Count this attempt up front so a worker that dies mid-task still leaves an
+    # accurate attempt number behind for recover_stuck_items to act on
+    item.download_attempts += 1
+    item.next_attempt_at = None
+    item.save(update_fields=['download_attempts', 'next_attempt_at', 'updated_at'])
 
     # Create tmp directory in media folder for this download
     # Format: <media_dir>/tmp-{guid}/
@@ -190,13 +369,20 @@ def process_media(guid):
             generate_summary(item.guid)
 
     except Exception as e:
-        # ERROR
-        item.status = MediaItem.STATUS_ERROR
-        item.error_message = str(e)
-        item.save()
+        # Retry via the paced queue, or give up once the attempts are exhausted
+        requeued = schedule_retry_or_fail(item, str(e))
         if log_path:
             write_log(log_path, '=== ERROR ===')
             write_log(log_path, f'Error: {str(e)}')
+            if requeued:
+                write_log(
+                    log_path,
+                    f'Requeued for retry {item.download_attempts + 1}/'
+                    f'{settings.STASHCAST_DOWNLOAD_MAX_ATTEMPTS} '
+                    f'at {item.next_attempt_at:%Y-%m-%d %H:%M:%S}',
+                )
+            else:
+                write_log(log_path, f'Giving up after {item.download_attempts} attempt(s)')
 
         # Clean up tmp directory on error
         if tmp_dir and tmp_dir.exists():
@@ -419,6 +605,9 @@ def process_media_batch(guids: List[str]):
                 item.extractor = video_info.extractor or ''
                 item.external_id = video_info.external_id or ''
                 item.webpage_url = video_info.webpage_url
+                # Publication date from the source platform, not the download date
+                if video_info.publish_date:
+                    item.publish_date = video_info.publish_date
 
                 # Determine media type
                 if requested_type == 'auto':
@@ -613,6 +802,149 @@ def process_media_batch(guids: List[str]):
                 shutil.rmtree(batch_tmp_dir)
         except Exception as e:
             write_log(batch_log_path, f'Failed to clean up: {e}')
+
+
+def fetch_publish_date_for_item(item, logger=None):
+    """Re-query the source platform for an item's publication date and store it.
+
+    Used to fill in items downloaded before the date was being captured. Only touches
+    publish_date - nothing else about the item is changed and nothing is re-downloaded.
+
+    Args:
+        item: MediaItem to update
+        logger: Optional callable(str) for logging
+
+    Returns:
+        datetime or None: The stored date, or None when the source offered none.
+    """
+    from media.service.resolve import prefetch
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    result = prefetch(item.source_url, 'ytdlp', logger=None)
+    if not result.publish_date:
+        log(f'  No date available: {item.title or item.source_url}')
+        return None
+
+    item.publish_date = result.publish_date
+    item.save(update_fields=['publish_date', 'updated_at'])
+    log(f'  {result.publish_date:%Y-%m-%d}  {item.title or item.source_url}')
+    return item.publish_date
+
+
+@db_task()
+def refresh_publish_date(guid):
+    """Background task: fill in one item's publication date from the source platform."""
+    try:
+        item = MediaItem.objects.get(guid=guid)
+    except MediaItem.DoesNotExist:
+        return
+
+    try:
+        fetch_publish_date_for_item(item)
+    except Exception:
+        # A missing/private/deleted video should not fail the whole batch
+        pass
+
+
+def backfill_publish_dates(limit=None, only_missing=True, logger=None):
+    """Fill in publication dates for items that do not have one yet.
+
+    Args:
+        limit: Maximum number of items to process (None = all)
+        only_missing: When False, refresh every item instead of just the undated ones
+        logger: Optional callable(str) for logging
+
+    Returns:
+        tuple[int, int]: (updated, skipped)
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    items = MediaItem.objects.exclude(status=MediaItem.STATUS_QUEUED)
+    if only_missing:
+        items = items.filter(publish_date__isnull=True)
+    items = items.order_by('-downloaded_at')
+    if limit:
+        items = items[: int(limit)]
+
+    updated = 0
+    skipped = 0
+    for item in items:
+        try:
+            if fetch_publish_date_for_item(item, logger=logger):
+                updated += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            skipped += 1
+            log(f'  Failed: {item.title or item.source_url} - {e}')
+
+    log(f'Publication dates: {updated} updated, {skipped} skipped')
+    return updated, skipped
+
+
+@db_task()
+def sync_channel_full(group_id):
+    """
+    Background task: walk a group's entire YouTube channel and queue every upload.
+
+    Listing a large back-catalogue takes a while, so this runs off the request cycle.
+    Everything it finds lands in STATUS_QUEUED and is released by the paced queue, so
+    a 500-video channel downloads slowly instead of all at once.
+    """
+    from media.models import MediaGroup
+    from media.operations import sync_group_channel
+
+    try:
+        group = MediaGroup.objects.get(pk=group_id)
+    except MediaGroup.DoesNotExist:
+        return
+
+    if not group.youtube_channel_url:
+        return
+
+    # max_videos=0 means "no cap" - the whole channel
+    sync_group_channel(group, max_videos=0)
+
+
+def _download_queue_crontab():
+    """Build the crontab schedule for the paced download queue.
+
+    Runs every N minutes (STASHCAST_DOWNLOAD_QUEUE_MINUTES). N is clamped to 1..59 so
+    the ``*/N`` minute expression stays valid.
+    """
+    minutes = getattr(settings, 'STASHCAST_DOWNLOAD_QUEUE_MINUTES', 5)
+    minutes = max(1, min(59, int(minutes)))
+    return crontab(minute=f'*/{minutes}')
+
+
+@db_periodic_task(crontab(minute='*'))
+def worker_heartbeat():
+    """Touch the heartbeat file so the UI can tell a dead worker from a busy one."""
+    path = heartbeat_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+
+@db_periodic_task(_download_queue_crontab())
+def process_download_queue():
+    """
+    Periodic task: release a small batch of queued downloads.
+
+    Items stashed by the YouTube channel sync wait in STATUS_QUEUED; this releases
+    STASHCAST_DOWNLOAD_QUEUE_BATCH of them every STASHCAST_DOWNLOAD_QUEUE_MINUTES
+    (default: 1 item every 5 minutes) so the workers are never flooded.
+
+    Also recovers items abandoned by a worker that died mid-task, so a failed
+    download no longer has to be re-synced by hand.
+    """
+    recover_stuck_items()
+    release_download_queue()
 
 
 def _youtube_sync_crontab():

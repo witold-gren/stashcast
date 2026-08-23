@@ -12,7 +12,28 @@ from pathlib import Path
 from media.models import MediaItem
 
 
-def stash_url(url, requested_type='auto', wait=False, logger=None, group=None):
+def resolve_requested_type(requested_type, group):
+    """Apply a group's download convention when no explicit type was asked for.
+
+    A group is either an audio or a video collection, so anything landing in it should
+    follow that convention. An explicit 'audio'/'video' from the caller still wins -
+    only 'auto' (i.e. "no preference") defers to the group.
+
+    Args:
+        requested_type: 'auto', 'audio', 'video', or a falsy value
+        group: MediaGroup instance or None
+
+    Returns:
+        str: The type to download with.
+    """
+    if group is None:
+        return requested_type or 'auto'
+    if requested_type in (None, '', 'auto'):
+        return group.download_type
+    return requested_type
+
+
+def stash_url(url, requested_type='auto', wait=False, logger=None, group=None, queued=False):
     """
     Stash a URL for download.
 
@@ -27,6 +48,10 @@ def stash_url(url, requested_type='auto', wait=False, logger=None, group=None):
         wait: If True, run synchronously. If False, enqueue background task.
         logger: Optional callable(message) for logging
         group: Optional MediaGroup to assign the item to
+        queued: If True, leave the item in STATUS_QUEUED without enqueuing anything.
+            The paced queue (process_download_queue) releases it later, one batch per
+            interval. Used by the YouTube channel sync so that adding a channel with
+            many uploads does not flood the workers. Ignored when ``wait`` is True.
 
     Returns:
         MediaItem: The created or reused MediaItem instance
@@ -35,6 +60,9 @@ def stash_url(url, requested_type='auto', wait=False, logger=None, group=None):
         >>> item = stash_url('http://example.com/video.mp4', 'auto', wait=True)
         >>> print(item.guid)
     """
+    # A group's download convention applies unless an explicit type was requested
+    requested_type = resolve_requested_type(requested_type, group)
+
     # Convert requested_type string to MediaItem constant
     type_map = {
         'auto': MediaItem.REQUESTED_TYPE_AUTO,
@@ -57,12 +85,18 @@ def stash_url(url, requested_type='auto', wait=False, logger=None, group=None):
         # For explicit types, match with items that have that media_type
         existing_item = MediaItem.objects.filter(source_url=url, media_type=requested_type).first()
 
+    # A queued item waits for the paced queue instead of starting right away
+    use_queue = queued and not wait
+    initial_status = MediaItem.STATUS_QUEUED if use_queue else MediaItem.STATUS_PREFETCHING
+
     if existing_item:
         # Reuse existing item (overwrite behavior)
         item = existing_item
         item.requested_type = requested_type_const
-        item.status = MediaItem.STATUS_PREFETCHING
+        item.status = initial_status
         item.error_message = ''
+        item.download_attempts = 0
+        item.next_attempt_at = None
         if group is not None:
             item.group = group
         item.save()
@@ -74,6 +108,7 @@ def stash_url(url, requested_type='auto', wait=False, logger=None, group=None):
             requested_type=requested_type_const,
             slug='pending',  # Will be set during processing
             group=group,
+            status=initial_status,
         )
         log(f'Created new item: {item.guid}')
 
@@ -84,6 +119,9 @@ def stash_url(url, requested_type='auto', wait=False, logger=None, group=None):
         # Run synchronously (blocking) - used by CLI
         log('Processing synchronously...')
         process_media.call_local(item.guid)
+    elif use_queue:
+        # Leave it for process_download_queue to release
+        log('Queued for the paced download queue')
     else:
         # Enqueue background task - used by web
         log('Enqueued background task')
@@ -194,20 +232,29 @@ def generate_summary_for_item(guid, logger=None):
     return item.summary
 
 
-def sync_group_channel(group, max_videos=None, wait=False, logger=None):
+def sync_group_channel(group, max_videos=None, wait=False, logger=None, immediate=False):
     """
-    Check a group's YouTube channel for new uploads and stash them as audio.
+    Check a group's YouTube channel for new uploads and stash them.
+
+    Uploads are downloaded as audio or video according to the group's ``download_type``.
 
     A video is considered "new" when no MediaItem with its URL is already assigned
     to this group, so re-running only picks up uploads that appeared since last time.
     Downloaded items are attached to ``group`` and reuse the normal processing
     pipeline via ``stash_url``.
 
+    New items are left in STATUS_QUEUED rather than enqueued immediately: the paced
+    queue releases them one batch per interval, so adding a channel with many uploads
+    does not flood the workers. Pass ``immediate=True`` to enqueue them all at once.
+
     Args:
         group: MediaGroup instance (must have youtube_channel_url set)
-        max_videos: How many of the most recent uploads to consider. Defaults to
+        max_videos: How many of the most recent uploads to consider. ``0`` means no
+            cap - the channel's entire back-catalogue. Defaults to
             settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS.
         wait: If True, download synchronously (used by CLI); otherwise enqueue.
+        immediate: If True, enqueue downloads right away instead of using the paced
+            queue. Ignored when ``wait`` is True.
         logger: Optional callable(message) for logging
 
     Returns:
@@ -226,6 +273,7 @@ def sync_group_channel(group, max_videos=None, wait=False, logger=None):
         log(f'Group "{group.name}" has no YouTube channel configured; skipping')
         return []
 
+    # Note: `is None` not falsiness - 0 is a meaningful value meaning "no cap"
     if max_videos is None:
         max_videos = settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS
 
@@ -242,10 +290,11 @@ def sync_group_channel(group, max_videos=None, wait=False, logger=None):
         log(f'New upload: {video.title or video.url}')
         item = stash_url(
             video.url,
-            requested_type='audio',
+            requested_type=group.download_type,
             wait=wait,
             logger=logger,
             group=group,
+            queued=not immediate,
         )
         new_items.append(item)
 
@@ -256,13 +305,15 @@ def sync_group_channel(group, max_videos=None, wait=False, logger=None):
     return new_items
 
 
-def sync_all_youtube_channels(wait=False, logger=None):
+def sync_all_youtube_channels(wait=False, logger=None, immediate=False):
     """
     Sync every group that has a YouTube channel configured.
 
     Args:
         wait: If True, download synchronously; otherwise enqueue background tasks.
         logger: Optional callable(message) for logging
+        immediate: If True, enqueue downloads right away instead of using the paced
+            queue. Ignored when ``wait`` is True.
 
     Returns:
         list[MediaItem]: All newly stashed items across all groups.
@@ -279,7 +330,9 @@ def sync_all_youtube_channels(wait=False, logger=None):
     stashed = []
     for group in groups:
         try:
-            stashed.extend(sync_group_channel(group, wait=wait, logger=logger))
+            stashed.extend(
+                sync_group_channel(group, wait=wait, logger=logger, immediate=immediate)
+            )
         except Exception as e:
             log(f'Failed to sync group "{group.name}": {e}')
     return stashed

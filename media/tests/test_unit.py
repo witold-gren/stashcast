@@ -1058,46 +1058,52 @@ class FeedAbsoluteUrlTest(TestCase):
         self.assertIn('medium="video"', xml)
 
 
-class WorkerTimeoutTest(TestCase):
-    """Tests for worker timeout detection"""
+class QueuedRetryTest(TestCase):
+    """Tests for the paced queue's retry behaviour in process_media"""
 
-    def test_worker_timeout_detection(self):
-        """Test that items stuck in PREFETCHING for >30s get timeout error"""
+    def test_waiting_in_queue_is_not_treated_as_failure(self):
+        """A long wait before pickup must not fail the item.
+
+        Regression test: process_media used to fail any item that had been in
+        PREFETCHING for more than 30 seconds, assuming the worker was down. Because
+        stash_url saves the item before enqueuing, a merely busy queue tripped that
+        check and killed healthy downloads.
+        """
         from datetime import timedelta
-
-        from media.tasks import process_media
-
-        # Create item with old timestamp (simulating stuck item)
-        old_time = timezone.now() - timedelta(seconds=35)
-        item = MediaItem.objects.create(
-            source_url='https://example.com/video.mp4',
-            requested_type=MediaItem.REQUESTED_TYPE_AUTO,
-            slug='pending',
-            status=MediaItem.STATUS_PREFETCHING,
-        )
-
-        # Force old timestamp by updating with raw SQL to bypass auto_now
-        MediaItem.objects.filter(guid=item.guid).update(updated_at=old_time)
-
-        # Refresh to get the updated timestamp
-        item.refresh_from_db()
-
-        # Call process_media directly (not as async task)
-        # The timeout check happens before any actual processing
-        process_media.call_local(item.guid)
-
-        item.refresh_from_db()
-        self.assertEqual(item.status, MediaItem.STATUS_ERROR)
-        self.assertIn('Worker timeout', item.error_message)
-        self.assertIn('run_huey', item.error_message)
-
-    def test_worker_timeout_not_triggered_for_recent_items(self):
-        """Test that recently created items don't trigger timeout"""
         from unittest.mock import patch
 
         from media.tasks import process_media
 
-        # Create item that's been PREFETCHING for only 5 seconds (recent)
+        item = MediaItem.objects.create(
+            source_url='https://example.com/video.mp4',
+            requested_type=MediaItem.REQUESTED_TYPE_AUTO,
+            slug='pending',
+            status=MediaItem.STATUS_PREFETCHING,
+        )
+        # Bypass auto_now to simulate a long wait behind other downloads
+        old_time = timezone.now() - timedelta(seconds=600)
+        MediaItem.objects.filter(guid=item.guid).update(updated_at=old_time)
+
+        with patch('media.tasks.prefetch_direct') as mock_prefetch:
+            mock_prefetch.side_effect = Exception('Reached real processing')
+            try:
+                process_media.call_local(item.guid)
+            except Exception:
+                pass
+
+        item.refresh_from_db()
+        # It got as far as real processing instead of being failed for waiting
+        self.assertIn('Reached real processing', item.error_message)
+        self.assertNotIn('Worker timeout', item.error_message)
+        self.assertEqual(item.download_attempts, 1)
+
+    @override_settings(STASHCAST_DOWNLOAD_MAX_ATTEMPTS=3)
+    def test_failure_requeues_while_attempts_remain(self):
+        """A failed download goes back to QUEUED with a backoff deadline"""
+        from unittest.mock import patch
+
+        from media.tasks import process_media
+
         item = MediaItem.objects.create(
             source_url='https://example.com/video.mp4',
             requested_type=MediaItem.REQUESTED_TYPE_AUTO,
@@ -1105,25 +1111,47 @@ class WorkerTimeoutTest(TestCase):
             status=MediaItem.STATUS_PREFETCHING,
         )
 
-        # Mock the actual processing to prevent real download
-        with (
-            patch('media.tasks.prefetch_direct') as mock_prefetch,
-            patch('media.tasks.prefetch_file') as mock_prefetch_file,
-        ):
-            # Make it fail quickly so we can test timeout didn't trigger
+        with patch('media.tasks.prefetch_direct') as mock_prefetch:
             mock_prefetch.side_effect = Exception('Test error')
-            mock_prefetch_file.side_effect = Exception('Test error')
-
             try:
                 process_media.call_local(item.guid)
             except Exception:
-                pass  # Expected to fail
+                pass
 
         item.refresh_from_db()
-        # Should have error from the mock exception, not timeout
-        self.assertEqual(item.status, MediaItem.STATUS_ERROR)
-        self.assertNotIn('Worker timeout', item.error_message)
+        self.assertEqual(item.status, MediaItem.STATUS_QUEUED)
+        self.assertEqual(item.download_attempts, 1)
+        self.assertIsNotNone(item.next_attempt_at)
+        self.assertGreater(item.next_attempt_at, timezone.now())
         self.assertIn('Test error', item.error_message)
+
+    @override_settings(STASHCAST_DOWNLOAD_MAX_ATTEMPTS=1)
+    def test_failure_errors_when_attempts_exhausted(self):
+        """With no attempts left the item is marked ERROR instead of requeued"""
+        from unittest.mock import patch
+
+        from media.tasks import process_media
+
+        item = MediaItem.objects.create(
+            source_url='https://example.com/video.mp4',
+            requested_type=MediaItem.REQUESTED_TYPE_AUTO,
+            slug='pending',
+            status=MediaItem.STATUS_PREFETCHING,
+        )
+
+        with patch('media.tasks.prefetch_direct') as mock_prefetch:
+            mock_prefetch.side_effect = Exception('Test error')
+            try:
+                process_media.call_local(item.guid)
+            except Exception:
+                pass
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_ERROR)
+        self.assertEqual(item.download_attempts, 1)
+        self.assertIsNone(item.next_attempt_at)
+        self.assertIn('Test error', item.error_message)
+        self.assertIn('gave up', item.error_message)
 
 
 class SSEWorkerTimeoutTest(TestCase):

@@ -256,3 +256,95 @@ class StashFormGroupTest(TestCase):
         )
         item = MediaItem.objects.get(source_url='http://example.com/d')
         self.assertEqual(item.group.name, 'Lekcje')
+
+
+class GroupDownloadTypeTest(TestCase):
+    """Tests for a group's audio/video download convention"""
+
+    def test_default_is_audio(self):
+        """Existing groups keep downloading audio, as the channel sync always did"""
+        group = MediaGroup.objects.create(name='Lekcje')
+        self.assertEqual(group.download_type, MediaGroup.DOWNLOAD_TYPE_AUDIO)
+
+    def test_choices_match_requested_type_values(self):
+        """The value is passed straight through as a requested type, so it must match"""
+        self.assertEqual(MediaGroup.DOWNLOAD_TYPE_AUDIO, MediaItem.REQUESTED_TYPE_AUDIO)
+        self.assertEqual(MediaGroup.DOWNLOAD_TYPE_VIDEO, MediaItem.REQUESTED_TYPE_VIDEO)
+
+
+class ResolveRequestedTypeTest(TestCase):
+    """Tests for how a group's convention combines with a per-download choice"""
+
+    def setUp(self):
+        from media.operations import resolve_requested_type
+
+        self.resolve = resolve_requested_type
+        self.audio_group = MediaGroup.objects.create(
+            name='Audio', download_type=MediaGroup.DOWNLOAD_TYPE_AUDIO
+        )
+        self.video_group = MediaGroup.objects.create(
+            name='Video', download_type=MediaGroup.DOWNLOAD_TYPE_VIDEO
+        )
+
+    def test_auto_defers_to_the_group(self):
+        self.assertEqual(self.resolve('auto', self.video_group), 'video')
+        self.assertEqual(self.resolve('auto', self.audio_group), 'audio')
+
+    def test_explicit_choice_wins_over_the_group(self):
+        """Asking for video explicitly must not be overridden by an audio group"""
+        self.assertEqual(self.resolve('video', self.audio_group), 'video')
+        self.assertEqual(self.resolve('audio', self.video_group), 'audio')
+
+    def test_no_group_leaves_the_type_alone(self):
+        self.assertEqual(self.resolve('auto', None), 'auto')
+        self.assertEqual(self.resolve('video', None), 'video')
+
+    def test_empty_type_is_treated_as_no_preference(self):
+        self.assertEqual(self.resolve('', self.video_group), 'video')
+        self.assertEqual(self.resolve(None, self.video_group), 'video')
+        self.assertEqual(self.resolve(None, None), 'auto')
+
+
+class StashUrlGroupTypeTest(TestCase):
+    """Tests that stash_url honours the group's convention"""
+
+    def setUp(self):
+        self.process_media = patch('media.tasks.process_media').start()
+        self.addCleanup(patch.stopall)
+
+    def test_video_group_gives_video_items(self):
+        from media.operations import stash_url
+
+        group = MediaGroup.objects.create(
+            name='Filmy', download_type=MediaGroup.DOWNLOAD_TYPE_VIDEO
+        )
+        item = stash_url('https://youtu.be/v1', requested_type='auto', group=group)
+
+        self.assertEqual(item.requested_type, MediaItem.REQUESTED_TYPE_VIDEO)
+
+    def test_audio_group_gives_audio_items(self):
+        from media.operations import stash_url
+
+        group = MediaGroup.objects.create(
+            name='Podcasty', download_type=MediaGroup.DOWNLOAD_TYPE_AUDIO
+        )
+        item = stash_url('https://youtu.be/v1', requested_type='auto', group=group)
+
+        self.assertEqual(item.requested_type, MediaItem.REQUESTED_TYPE_AUDIO)
+
+    def test_explicit_type_survives(self):
+        from media.operations import stash_url
+
+        group = MediaGroup.objects.create(
+            name='Podcasty', download_type=MediaGroup.DOWNLOAD_TYPE_AUDIO
+        )
+        item = stash_url('https://youtu.be/v1', requested_type='video', group=group)
+
+        self.assertEqual(item.requested_type, MediaItem.REQUESTED_TYPE_VIDEO)
+
+    def test_ungrouped_auto_stays_auto(self):
+        from media.operations import stash_url
+
+        item = stash_url('https://youtu.be/v1', requested_type='auto')
+
+        self.assertEqual(item.requested_type, MediaItem.REQUESTED_TYPE_AUTO)

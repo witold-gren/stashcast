@@ -6,6 +6,8 @@ These views require authentication and provide the admin interface for managing 
 
 import json
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
@@ -488,3 +490,81 @@ class SSEStatusStreamTest(TestCase):
         first_chunk = chunks[0].decode()
         self.assertIn('event: error', first_chunk)
         self.assertIn('Item not found', first_chunk)
+
+
+class AdminActionTest(TestCase):
+    """Tests for the custom admin actions added for channels and publish dates"""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_superuser('admin2', 'admin2@test.com', 'password')
+        self.client.login(username='admin2', password='password')
+
+    def _post_action(self, url, action, pks):
+        return self.client.post(
+            url, {'action': action, '_selected_action': pks}, follow=True
+        )
+
+    def test_download_entire_channel_enqueues_scan(self):
+        """The group action kicks off a background scan rather than blocking"""
+        from media.models import MediaGroup
+
+        group = MediaGroup.objects.create(
+            name='Lekcje', youtube_channel_url='https://www.youtube.com/@lekcje'
+        )
+
+        with patch('media.tasks.sync_channel_full') as mock_task:
+            response = self._post_action(
+                '/admin/media/mediagroup/', 'download_entire_channel', [group.pk]
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mock_task.assert_called_once_with(group.pk)
+
+    def test_download_entire_channel_skips_groups_without_a_channel(self):
+        from media.models import MediaGroup
+
+        plain = MediaGroup.objects.create(name='Bez kanalu')
+
+        with patch('media.tasks.sync_channel_full') as mock_task:
+            self._post_action(
+                '/admin/media/mediagroup/', 'download_entire_channel', [plain.pk]
+            )
+
+        mock_task.assert_not_called()
+
+    def test_refresh_publish_dates_enqueues_per_item(self):
+        items = [
+            MediaItem.objects.create(
+                source_url=f'https://youtu.be/v{i}',
+                requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+                slug=f'item-{i}',
+                status=MediaItem.STATUS_READY,
+            )
+            for i in range(2)
+        ]
+
+        with patch('media.tasks.refresh_publish_date') as mock_task:
+            response = self._post_action(
+                '/admin/media/mediaitem/', 'refresh_publish_dates', [i.guid for i in items]
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_task.call_count, 2)
+
+    def test_requeue_items_resets_attempts(self):
+        item = MediaItem.objects.create(
+            source_url='https://youtu.be/failed',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug='failed',
+            status=MediaItem.STATUS_ERROR,
+            download_attempts=3,
+            error_message='HTTP Error 403: Forbidden',
+        )
+
+        self._post_action('/admin/media/mediaitem/', 'requeue_items', [item.guid])
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_QUEUED)
+        self.assertEqual(item.download_attempts, 0)
+        self.assertEqual(item.error_message, '')

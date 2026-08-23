@@ -363,6 +363,35 @@ CLI command for foreground stashing (no Huey):
 
 Django model representing a media item with all metadata and file paths.
 
+#### The two type fields: `requested_type` vs `media_type`
+
+`MediaItem` deliberately stores both **intent** and **outcome**:
+
+| Field | Values | Meaning |
+|-------|--------|---------|
+| `requested_type` | `auto`, `audio`, `video` | What was **asked for** |
+| `media_type` | `audio`, `video` | What was **actually produced** |
+
+`resolve_media_type(requested_type, prefetch_result)` turns the first into the second
+during prefetch: an explicit `audio`/`video` is passed through, while `auto` is decided
+from the streams the source actually offers.
+
+Both are needed because:
+
+- `auto` is not a real media type, so it cannot live in `media_type` - but it still has
+  to be remembered.
+- Re-fetching depends on the intent. An `auto` item should re-decide from whatever the
+  source offers now; an item explicitly requested as `audio` must stay audio even if the
+  source has video streams. Without `requested_type`, a re-fetch could silently change
+  an item's type.
+- Downstream behaviour keys off the **outcome**: file extension, transcoding target and
+  which feed the item appears in (audio vs video) all read `media_type`.
+
+`MediaGroup.download_type` (`audio` / `video`) is a third, simpler thing: a **default
+intent** for the group. It has no `auto` because the whole point is to pin a convention.
+`resolve_requested_type()` applies it whenever a download into the group did not ask for
+a specific type, so one field is enough at the group level.
+
 ### `media/views.py`
 
 HTTP endpoints:

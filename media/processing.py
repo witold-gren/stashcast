@@ -68,6 +68,11 @@ def _apply_prefetch_result(item, result, log_path):
     item.extractor = result.extractor or ''
     item.external_id = result.external_id or ''
 
+    # Keep the source platform's publication date so feeds show when the episode was
+    # actually published, not when we happened to download it
+    if result.publish_date:
+        item.publish_date = result.publish_date
+
     item.media_type = resolve_media_type(item.requested_type, result)
 
     existing_item = select_existing_item(

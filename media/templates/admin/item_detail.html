@@ -66,8 +66,10 @@
     .status-processing { background: color-mix(in srgb, #ffc107 20%, transparent); color: #b38600; }
     .status-downloading { background: color-mix(in srgb, #17a2b8 20%, transparent); color: #17a2b8; }
     .status-prefetching { background: color-mix(in srgb, #6c757d 20%, transparent); color: var(--sc-muted); }
+    .status-queued { background: color-mix(in srgb, #7c6cff 20%, transparent); color: #5b4bd6; }
     .dark .status-processing { color: #ffc107; }
     .dark .status-archived { color: #94a3b8; }
+    .dark .status-queued { color: #a89bff; }
     .action-bar .separator {
         width: 1px;
         height: 20px;
@@ -174,6 +176,8 @@
         <span class="status-badge status-processing">{% trans "Processing" %}</span>
     {% elif item.status == 'DOWNLOADING' %}
         <span class="status-badge status-downloading">{% trans "Downloading" %}</span>
+    {% elif item.status == 'QUEUED' %}
+        <span class="status-badge status-queued">{% trans "Queued" %}</span>
     {% else %}
         <span class="status-badge status-prefetching">{% trans "Prefetching" %}</span>
     {% endif %}

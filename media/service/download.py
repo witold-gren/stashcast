@@ -6,6 +6,7 @@ Handles both direct HTTP downloads and yt-dlp downloads.
 
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
 import shutil
@@ -20,6 +21,7 @@ from media.service.config import (
     parse_js_runtimes,
     parse_ytdlp_extra_args,
 )
+from media.service.media_info import parse_publish_date
 
 
 @dataclass
@@ -474,6 +476,8 @@ class VideoInfo:
     webpage_url: Optional[str] = None
     extractor: Optional[str] = None
     external_id: Optional[str] = None
+    # Original publication date on the source platform (not the download date)
+    publish_date: Optional[datetime] = None
     # For tracking which original URL this came from (for playlists)
     source_url: Optional[str] = None
     playlist_title: Optional[str] = None
@@ -574,6 +578,7 @@ def prefetch_ytdlp_batch(
                                 webpage_url=video_url,
                                 extractor=entry.get('extractor', ''),
                                 external_id=entry.get('id', ''),
+                                publish_date=parse_publish_date(entry),
                                 source_url=url,
                                 playlist_title=playlist_title,
                             )
@@ -604,6 +609,7 @@ def prefetch_ytdlp_batch(
                             webpage_url=video_url,
                             extractor=info.get('extractor', ''),
                             external_id=info.get('id', ''),
+                            publish_date=parse_publish_date(info),
                             source_url=url,
                             playlist_title=None,
                         )

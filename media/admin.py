@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
 from django.urls import reverse
@@ -80,6 +81,7 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'image_thumbnail',
         'name',
         'slug',
+        'download_type',
         'item_count_display',
         'youtube_sync_display',
         'created_at',
@@ -93,11 +95,12 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'slug',
         'image',
         'image_preview',
+        'download_type',
         'youtube_channel_url',
         'youtube_last_synced_at',
         'created_at',
     ]
-    actions = ['sync_youtube_now']
+    actions = ['sync_youtube_now', 'download_entire_channel']
 
     def item_count_display(self, obj):
         return obj.items.count()
@@ -124,9 +127,46 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         total = 0
         for group in queryset.exclude(youtube_channel_url=''):
             total += len(sync_group_channel(group))
-        self.message_user(request, f'Enqueued {total} new YouTube upload(s) for download.')
+        self.message_user(
+            request,
+            f'Queued {total} new YouTube upload(s). They are released a few at a time '
+            f'by the paced download queue.',
+        )
 
-    sync_youtube_now.short_description = 'Sync YouTube channel now'
+    sync_youtube_now.short_description = (
+        f'Sync YouTube channel now (newest {settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS} only)'
+    )
+
+    def download_entire_channel(self, request, queryset):
+        """Queue every upload on the channel, not just the newest few.
+
+        Listing a large back-catalogue is slow, so the walk itself runs as a background
+        task. Everything it finds goes into the paced queue and downloads gradually.
+        """
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to sync channels.')
+        from media.tasks import sync_channel_full
+
+        groups = list(queryset.exclude(youtube_channel_url=''))
+        for group in groups:
+            sync_channel_full(group.pk)
+
+        if not groups:
+            self.message_user(
+                request, 'None of the selected groups has a YouTube channel configured.'
+            )
+            return
+
+        interval = settings.STASHCAST_DOWNLOAD_QUEUE_MINUTES
+        batch = settings.STASHCAST_DOWNLOAD_QUEUE_BATCH
+        self.message_user(
+            request,
+            f'Scanning {len(groups)} channel(s) in the background. Every upload found is '
+            f'added to the paced queue and downloaded {batch} at a time every '
+            f'{interval} min - watch it with "./manage.py download_queue".',
+        )
+
+    download_entire_channel.short_description = 'Download ENTIRE channel (paced, background)'
 
     def image_thumbnail(self, obj):
         url = build_group_image_url(obj)
@@ -248,6 +288,8 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
 
     actions = [
         'refetch_items',
+        'requeue_items',
+        'refresh_publish_dates',
         'regenerate_summaries',
         'archive_items',
         'unarchive_items',
@@ -324,7 +366,50 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             count += 1
         self.message_user(request, f'Re-fetching {count} items.')
 
-    refetch_items.short_description = 'Re-fetch selected items'
+    refetch_items.short_description = 'Re-fetch selected items (immediately)'
+
+    def requeue_items(self, request, queryset):
+        """Put items back into the paced queue with a fresh set of attempts.
+
+        Unlike re-fetch, this does not enqueue anything right away: the queue releases
+        the items a few at a time, which is what you want after a batch of failures.
+        """
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to requeue items.')
+        count = 0
+        for item in queryset:
+            item.status = MediaItem.STATUS_QUEUED
+            item.download_attempts = 0
+            item.next_attempt_at = None
+            item.error_message = ''
+            item.save()
+            count += 1
+        self.message_user(request, f'Requeued {count} item(s) for the paced download queue.')
+
+    requeue_items.short_description = 'Requeue selected items (paced queue)'
+
+    def refresh_publish_dates(self, request, queryset):
+        """Fetch the original publication date from the source for selected items.
+
+        For items downloaded before the date was captured, whose feed entries would
+        otherwise be dated by when they were downloaded. Metadata only - nothing is
+        re-downloaded.
+        """
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to refresh metadata.')
+        from media.tasks import refresh_publish_date
+
+        count = 0
+        for item in queryset:
+            refresh_publish_date(item.guid)
+            count += 1
+        self.message_user(
+            request,
+            f'Fetching publication dates for {count} item(s) in the background. '
+            f'Reload in a moment to see them.',
+        )
+
+    refresh_publish_dates.short_description = 'Fetch publication date from source'
 
     def regenerate_summaries(self, request, queryset):
         if is_demo_readonly(request.user):

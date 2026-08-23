@@ -19,7 +19,15 @@ services:
         GIT_COMMIT_MSG: ${GIT_COMMIT_MSG:-}
         GIT_BRANCH: ${GIT_BRANCH:-}
     container_name: stashcast_web
+    # All application settings come from .env - edit that file and redeploy instead of
+    # editing this one. On Coolify you can also set them in the app's Environment
+    # Variables tab; those are injected as real env vars and win over .env.
+    # (The "required: false" form needs Docker Compose v2.24+.)
+    env_file:
+      - path: .env
+        required: false
     environment:
+      # Container path, deliberately kept here so it wins over any value in .env
       STASHCAST_DATA_DIR: /app/data_docker
     hostname: web
     volumes:
@@ -39,7 +47,13 @@ services:
     hostname: worker
     depends_on:
       - web
+    # Same settings as web: the worker needs them too (yt-dlp options, queue pacing,
+    # cookies, proxy, ...), so both services read the same file.
+    env_file:
+      - path: .env
+        required: false
     environment:
+      # Container path, deliberately kept here so it wins over any value in .env
       STASHCAST_DATA_DIR: /app/data_docker
     volumes:
       - .:/app

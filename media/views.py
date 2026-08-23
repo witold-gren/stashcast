@@ -11,7 +11,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from media.models import MediaGroup, MediaItem
-from media.tasks import generate_summary, process_media, process_media_batch
+from media.tasks import generate_summary, process_media, process_media_batch, worker_is_alive
+from media.operations import resolve_requested_type
 from media.utils import build_media_url
 
 
@@ -444,6 +445,9 @@ def admin_stash_form_view(request):
         media_type = request.POST.get('type', 'auto')
         bulk_urls_raw = request.POST.get('bulk_urls', '').strip()
         group = _resolve_group(request)
+        # A group is an audio or a video collection; follow that unless the form
+        # asked for a specific type
+        media_type = resolve_requested_type(media_type, group)
 
         # Check if bulk URLs were provided
         if bulk_urls_raw:
@@ -667,6 +671,7 @@ def admin_stash_confirm_multiple_view(request):
         # Resolve group chosen on the original form (stored in session)
         group_id = request.session.get('multi_item_group_id')
         group = MediaGroup.objects.filter(pk=group_id).first() if group_id else None
+        media_type = resolve_requested_type(media_type, group)
 
         # Clear session data
         del request.session['multi_item_url']
@@ -784,6 +789,7 @@ def admin_spotify_confirm_view(request):
         # Resolve group chosen on the original form (stored in session)
         group_id = request.session.get('spotify_group_id')
         group = MediaGroup.objects.filter(pk=group_id).first() if group_id else None
+        media_type = resolve_requested_type(media_type, group)
 
         # Clear session data
         for key in [
@@ -1105,19 +1111,18 @@ def stash_status_stream(request, guid):
                 # Refresh the item from database
                 item = MediaItem.objects.get(guid=guid)
 
-                # Detect worker unavailable: if stuck in PREFETCHING for >30s,
-                # the Huey worker likely isn't running (task never got picked up)
-                if item.status == MediaItem.STATUS_PREFETCHING:
-                    seconds_waiting = (timezone.now() - item.updated_at).total_seconds()
-                    if seconds_waiting > 30:
-                        item.status = MediaItem.STATUS_ERROR
-                        item.error_message = (
-                            'Worker unavailable: task has not been picked up for '
-                            f'{int(seconds_waiting)} seconds. '
-                            'The Huey worker may not be running. '
-                            'Start it with: python manage.py run_huey'
-                        )
-                        item.save()
+                # Detect worker unavailable via the worker's heartbeat file rather
+                # than by how long the item has waited - a busy queue also makes an
+                # item wait, and the old time-based guess failed healthy downloads.
+                if item.status == MediaItem.STATUS_PREFETCHING and not worker_is_alive():
+                    seconds_waiting = int((timezone.now() - item.updated_at).total_seconds())
+                    item.status = MediaItem.STATUS_ERROR
+                    item.error_message = (
+                        'Worker unavailable: no heartbeat from the Huey worker and the '
+                        f'task has been waiting {seconds_waiting} seconds. '
+                        'Start it with: python manage.py run_huey'
+                    )
+                    item.save()
 
                 # Only send event if status changed
                 if item.status != last_status:

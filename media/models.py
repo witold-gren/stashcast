@@ -40,6 +40,27 @@ class MediaGroup(models.Model):
         blank=True,
         help_text='When this group was last checked for new YouTube uploads.',
     )
+
+    # Values deliberately match MediaItem.REQUESTED_TYPE_AUDIO / _VIDEO so this can be
+    # passed straight through as a requested type. They are spelled out rather than
+    # referenced because MediaGroup is defined before MediaItem.
+    DOWNLOAD_TYPE_AUDIO = 'audio'
+    DOWNLOAD_TYPE_VIDEO = 'video'
+
+    DOWNLOAD_TYPE_CHOICES = [
+        (DOWNLOAD_TYPE_AUDIO, _('Audio')),
+        (DOWNLOAD_TYPE_VIDEO, _('Video')),
+    ]
+
+    download_type = models.CharField(
+        max_length=10,
+        choices=DOWNLOAD_TYPE_CHOICES,
+        default=DOWNLOAD_TYPE_AUDIO,
+        help_text=(
+            'What to download for this group. Applies to the YouTube channel sync and '
+            'to anything added to this group without an explicit type of its own.'
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -80,6 +101,10 @@ class MediaItem(models.Model):
     """Media item downloaded via yt-dlp or direct HTTP"""
 
     # Status choices
+    # QUEUED means "waiting for a download slot": the item exists but no worker task
+    # has been enqueued for it yet. The paced queue (process_download_queue) hands out
+    # one slot at a time so a channel with many new uploads cannot flood the workers.
+    STATUS_QUEUED = 'QUEUED'
     STATUS_PREFETCHING = 'PREFETCHING'
     STATUS_DOWNLOADING = 'DOWNLOADING'
     STATUS_PROCESSING = 'PROCESSING'
@@ -88,6 +113,7 @@ class MediaItem(models.Model):
     STATUS_ARCHIVED = 'ARCHIVED'
 
     STATUS_CHOICES = [
+        (STATUS_QUEUED, _('Queued')),
         (STATUS_PREFETCHING, _('Prefetching')),
         (STATUS_DOWNLOADING, _('Downloading')),
         (STATUS_PROCESSING, _('Processing')),
@@ -95,6 +121,10 @@ class MediaItem(models.Model):
         (STATUS_ERROR, _('Error')),
         (STATUS_ARCHIVED, _('Archived')),
     ]
+
+    # Statuses that mean a worker is actively holding this item. Used to detect items
+    # left behind by a worker that died mid-task.
+    IN_PROGRESS_STATUSES = (STATUS_PREFETCHING, STATUS_DOWNLOADING, STATUS_PROCESSING)
 
     # Media type choices
     MEDIA_TYPE_AUDIO = 'audio'
@@ -169,6 +199,18 @@ class MediaItem(models.Model):
 
     # Timestamps
     downloaded_at = models.DateTimeField(null=True, blank=True)
+
+    # Retry bookkeeping for the paced download queue
+    download_attempts = models.PositiveIntegerField(
+        default=0,
+        help_text='How many times a download has been attempted for this item.',
+    )
+    next_attempt_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text='Earliest time the paced queue may pick this item up (retry backoff).',
+    )
     archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -192,6 +234,14 @@ class MediaItem(models.Model):
     @property
     def has_error(self):
         return self.status == self.STATUS_ERROR
+
+    @property
+    def is_queued(self):
+        return self.status == self.STATUS_QUEUED
+
+    @property
+    def is_in_progress(self):
+        return self.status in self.IN_PROGRESS_STATUSES
 
     def get_base_dir(self):
         """Get absolute base directory path for this item's files"""
