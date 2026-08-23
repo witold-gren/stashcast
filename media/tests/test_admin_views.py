@@ -4,6 +4,7 @@ Tests for admin views (grid, list, item detail, progress, SSE).
 These views require authentication and provide the admin interface for managing media.
 """
 
+import datetime
 import json
 
 from unittest.mock import patch
@@ -568,3 +569,70 @@ class AdminActionTest(TestCase):
         self.assertEqual(item.status, MediaItem.STATUS_QUEUED)
         self.assertEqual(item.download_attempts, 0)
         self.assertEqual(item.error_message, '')
+
+
+class AdminPublishDateColumnTest(TestCase):
+    """Tests for the publication date column on the Media items changelist"""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_superuser('admin3', 'admin3@test.com', 'password')
+        self.client.login(username='admin3', password='password')
+
+        self.dated = MediaItem.objects.create(
+            source_url='https://youtu.be/dated',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug='dated',
+            title='Ma date',
+            status=MediaItem.STATUS_READY,
+            publish_date=datetime.datetime(2014, 11, 10, 14, 5, 55, tzinfo=datetime.timezone.utc),
+        )
+        self.undated = MediaItem.objects.create(
+            source_url='https://youtu.be/undated',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug='undated',
+            title='Bez daty',
+            status=MediaItem.STATUS_READY,
+        )
+
+    def test_column_shows_the_date(self):
+        response = self.client.get('/admin/media/mediaitem/')
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Published', html)
+        self.assertIn('2014-11-10', html)
+
+    def test_missing_date_is_marked_explicitly(self):
+        """An empty cell would not tell you whether the date is missing"""
+        html = self.client.get('/admin/media/mediaitem/').content.decode()
+        self.assertIn('not set', html)
+
+    def test_renders_without_a_date_present(self):
+        """Regression: the "not set" branch used to raise TypeError from format_html,
+        which broke the whole changelist for anyone with an undated item."""
+        self.dated.delete()
+        response = self.client.get('/admin/media/mediaitem/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('not set', response.content.decode())
+
+    def test_can_filter_to_items_missing_a_date(self):
+        """Pairs with the "Fetch publication date from source" action"""
+        html = self.client.get(
+            '/admin/media/mediaitem/?publish_date__isempty=1'
+        ).content.decode()
+        self.assertIn('Bez daty', html)
+        self.assertNotIn('Ma date', html)
+
+    def test_can_filter_to_items_having_a_date(self):
+        html = self.client.get(
+            '/admin/media/mediaitem/?publish_date__isempty=0'
+        ).content.decode()
+        self.assertIn('Ma date', html)
+        self.assertNotIn('Bez daty', html)
+
+    def test_column_is_sortable(self):
+        from media.admin import MediaItemAdmin
+
+        self.assertEqual(
+            MediaItemAdmin.publish_date_display.admin_order_field, 'publish_date'
+        )

@@ -202,7 +202,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'group',
         'status',
         # 'author',
-        # 'publish_date',
+        'publish_date_display',
         'file_size_display',
         'updated_at',
     ]
@@ -212,6 +212,10 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'media_type',
         'group',
         'requested_type',
+        # Lets you narrow down to items with no publication date, select them all and
+        # run the "Fetch publication date from source" action
+        ('publish_date', admin.EmptyFieldListFilter),
+        'publish_date',
         'created_at',
         'downloaded_at',
     ]
@@ -294,6 +298,29 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'archive_items',
         'unarchive_items',
     ]
+
+    def publish_date_display(self, obj):
+        """Publication date on the source platform, or a clear marker when unknown.
+
+        Rendered rather than shown raw so a missing date reads as missing instead of as
+        an empty cell - those are the items worth running the fetch action on.
+        """
+        if not obj.publish_date:
+            # mark_safe, not format_html: a constant string with no interpolated data
+            return mark_safe(
+                '<span style="opacity: .5" title="No publication date &ndash; feeds fall '
+                'back to the download date. Use the &quot;Fetch publication date from '
+                'source&quot; action.">&mdash; not set</span>'
+            )
+        local = timezone.localtime(obj.publish_date)
+        return format_html(
+            '<span title="{}">{}</span>',
+            local.strftime('%Y-%m-%d %H:%M %Z'),
+            local.strftime('%Y-%m-%d'),
+        )
+
+    publish_date_display.short_description = 'Published'
+    publish_date_display.admin_order_field = 'publish_date'
 
     def file_size_display(self, obj):
         if obj.file_size:
