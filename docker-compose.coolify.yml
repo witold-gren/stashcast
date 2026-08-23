@@ -65,6 +65,18 @@ volumes:
 configs:
   caddyfile:
     content: |
+      {
+        # Honour the X-Forwarded-* headers set by the reverse proxy in front of us
+        # (nginx-proxy-manager, Traefik, Coolify's proxy, ...). Without this Caddy
+        # overwrites X-Forwarded-Proto with the scheme it received itself - plain
+        # http - and Django then builds http:// links on pages like
+        # /admin/tools/feeds/ even though users reach the site over https.
+        # private_ranges covers the container network the proxy talks to us from.
+        servers {
+          trusted_proxies static private_ranges
+        }
+      }
+
       :80 {
         # encode gzip
         handle /static/* {

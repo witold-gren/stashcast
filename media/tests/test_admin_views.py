@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from media.models import MediaItem
 
@@ -636,3 +637,57 @@ class AdminPublishDateColumnTest(TestCase):
         self.assertEqual(
             MediaItemAdmin.publish_date_display.admin_order_field, 'publish_date'
         )
+
+
+class ProxyHttpsUrlTest(TestCase):
+    """Tests that generated URLs respect X-Forwarded-Proto from the reverse proxy.
+
+    The app runs behind a TLS-terminating proxy, so requests reach Django over plain
+    HTTP. SECURE_PROXY_SSL_HEADER makes Django trust X-Forwarded-Proto; these tests
+    pin that behaviour so absolute URLs do not silently revert to http://.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_superuser('proxy', 'proxy@test.com', 'password')
+        self.client.login(username='proxy', password='password')
+
+    def test_feed_links_page_uses_https_behind_proxy(self):
+        response = self.client.get(
+            '/admin/tools/feeds/',
+            HTTP_HOST='testserver',
+            HTTP_X_FORWARDED_PROTO='https',
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('https://testserver/feeds/', html)
+        self.assertNotIn('http://testserver/feeds/', html)
+
+    def test_feed_links_page_stays_http_without_the_header(self):
+        """Without the header we must not claim https - that would break local use"""
+        html = self.client.get('/admin/tools/feeds/', HTTP_HOST='testserver').content.decode()
+        self.assertIn('http://testserver/feeds/', html)
+
+    def test_feed_enclosure_urls_use_https_behind_proxy(self):
+        """Media enclosures matter most: http:// URLs in an https feed are mixed content"""
+        MediaItem.objects.create(
+            source_url='https://youtu.be/v1',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            media_type=MediaItem.MEDIA_TYPE_AUDIO,
+            slug='odcinek',
+            title='Odcinek',
+            status=MediaItem.STATUS_READY,
+            content_path='odcinek.m4a',
+            file_size=1234,
+            downloaded_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            '/feeds/audio.xml',
+            HTTP_HOST='testserver',
+            HTTP_X_FORWARDED_PROTO='https',
+        )
+        self.assertEqual(response.status_code, 200)
+        xml = response.content.decode()
+        self.assertNotIn('http://testserver', xml)
+        self.assertIn('https://testserver', xml)
