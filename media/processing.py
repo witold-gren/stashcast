@@ -311,6 +311,59 @@ def download_ytdlp(item, tmp_dir, log_path):
     _apply_download_info(item, tmp_dir, download_info, log_path)
 
 
+def ensure_playable_video(item, tmp_dir, log_path):
+    """
+    Repack a freshly downloaded video if podcast clients could not play it.
+
+    yt-dlp honours the format selector it is given; when that selector does not pin
+    AAC, YouTube's "best audio" is Opus and the merge falls back to a Matroska/WebM
+    container, often alongside AV1 or VP9 video. Apple Podcasts and iOS reject all of
+    those, so the download succeeds but the episode fails on the device.
+
+    Streams already in a supported codec are copied rather than re-encoded.
+
+    Args:
+        item: MediaItem instance
+        tmp_dir: Temporary directory holding the downloaded file
+        log_path: Path to log file
+    """
+    from media.service.media_info import is_ios_compatible_video, probe_codecs
+    from media.service.process import remux_to_compatible_mp4
+
+    if not settings.STASHCAST_ENSURE_PLAYABLE_VIDEO:
+        return
+    if item.media_type != MediaItem.MEDIA_TYPE_VIDEO or not item.content_path:
+        return
+
+    source = tmp_dir / item.content_path
+    if not source.exists():
+        return
+
+    if is_ios_compatible_video(source):
+        write_log(log_path, 'Video is already playable (MP4/H.264/AAC)')
+        return
+
+    codecs = probe_codecs(source)
+    write_log(
+        log_path,
+        f'Video not playable on Apple Podcasts / iOS '
+        f'({source.suffix} {codecs["video_codec"]}/{codecs["audio_codec"]}); repacking. '
+        f'Pin AAC in STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO to avoid this step.',
+    )
+
+    target = tmp_dir / 'content-repacked.mp4'
+    remux_to_compatible_mp4(source, target, logger=lambda m: write_log(log_path, m))
+
+    final = tmp_dir / 'content.mp4'
+    source.unlink()
+    target.replace(final)
+
+    item.content_path = final.name
+    item.file_size = final.stat().st_size
+    item.save(update_fields=['content_path', 'file_size', 'updated_at'])
+    write_log(log_path, f'Repacked to {final.name} ({item.file_size} bytes)')
+
+
 def process_files(item, tmp_dir, log_path):
     """
     Process downloaded files in tmp directory.

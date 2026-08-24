@@ -15,6 +15,7 @@ from media.models import MediaItem
 from media.processing import (
     download_direct,
     download_ytdlp,
+    ensure_playable_video,
     prefetch_file,
     prefetch_direct,
     prefetch_ytdlp,
@@ -323,6 +324,10 @@ def process_media(guid):
             download_direct(item, tmp_dir, log_path)
         else:
             download_ytdlp(item, tmp_dir, log_path)
+
+        # Repack the file if the download landed in a container/codec podcast clients
+        # cannot play (see STASHCAST_ENSURE_PLAYABLE_VIDEO)
+        ensure_playable_video(item, tmp_dir, log_path)
 
         # PROCESSING
         item.status = MediaItem.STATUS_PROCESSING

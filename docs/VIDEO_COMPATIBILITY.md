@@ -41,6 +41,58 @@ b[height<=720]                                # last resort, rather than failing
 Nothing to do beyond deploying — the next download of a video is an MP4 with H.264 video
 and AAC audio.
 
+## If it still fails after deploying: check your `.env`
+
+`STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO` **replaces** the default, it does not extend it. A
+line like this one — typically added just to get `--sleep-interval` — silently throws
+the format selector away and brings the problem straight back:
+
+```bash
+# BROKEN: no format selector left, so "+ba" picks Opus again
+STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO="--format \"bv*[height<=720]+ba\" --sleep-interval 5"
+```
+
+The download log tells you which selector was actually used:
+
+```
+Format: bv*[height<=720]+ba          ← an override is in effect
+Format: bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/...   ← the default
+```
+
+**Fix: delete both `STASHCAST_DEFAULT_YTDLP_ARGS_*` lines** and use the dedicated
+settings for what you actually wanted:
+
+```bash
+# Rate limiting, without losing the format defaults
+STASHCAST_YTDLP_SLEEP_INTERVAL=5
+STASHCAST_YTDLP_MAX_SLEEP_INTERVAL=30
+```
+
+If you do need a custom selector, keep the audio pin and the merge format:
+
+```bash
+STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO='--format "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/b[height<=720][ext=mp4]/b[height<=720]" --merge-output-format mp4 --embed-metadata'
+```
+
+## The safety net
+
+Because a wrong selector is easy to introduce and hard to notice, the download pipeline
+now checks every finished video and repacks it as MP4/H.264/AAC when a podcast client
+could not have played it. The log says so explicitly:
+
+```
+Video not playable on Apple Podcasts / iOS (.webm vp9/opus); repacking.
+Pin AAC in STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO to avoid this step.
+```
+
+Streams already in a supported codec are copied, so pinning AAC is still much cheaper —
+re-encoding AV1 or VP9 video costs roughly 2 minutes of CPU per hour of material.
+Disable the safety net with `STASHCAST_ENSURE_PLAYABLE_VIDEO=false`.
+
+Related: the pipeline no longer renames a container it did not convert. A `.webm`
+download stays `content.webm` instead of becoming `content.mp4`, so the file and its
+MIME type stop misrepresenting what they are.
+
 ## Repairing episodes you already downloaded
 
 Files fetched before the fix are still `.mkv` and still will not play. They do **not**

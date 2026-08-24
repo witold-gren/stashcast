@@ -82,6 +82,13 @@ def apply_network_opts(ydl_opts, logger=None):
     if settings.STASHCAST_YTDLP_IMPERSONATE:
         ydl_opts['impersonate'] = parse_impersonate_target(settings.STASHCAST_YTDLP_IMPERSONATE)
 
+    # Random pause between requests, to stay under YouTube's rate limiting
+    if settings.STASHCAST_YTDLP_SLEEP_INTERVAL > 0:
+        ydl_opts.setdefault('sleep_interval', settings.STASHCAST_YTDLP_SLEEP_INTERVAL)
+        max_sleep = settings.STASHCAST_YTDLP_MAX_SLEEP_INTERVAL
+        if max_sleep > 0:
+            ydl_opts.setdefault('max_sleep_interval', max_sleep)
+
     # Retries: expiring stream URLs and rate limits often surface as a one-off 403
     ydl_opts.setdefault('retries', settings.STASHCAST_YTDLP_RETRIES)
     ydl_opts.setdefault('fragment_retries', settings.STASHCAST_YTDLP_FRAGMENT_RETRIES)

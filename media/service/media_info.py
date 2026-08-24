@@ -178,6 +178,14 @@ def get_output_extension(resolved_type, source_extension=None):
         if normalize_extension(source_extension) == '.mp3':
             return '.mp3'
         return get_target_audio_format()
+
+    # Video: keep the container the file actually is. Renaming e.g. a .webm to .mp4
+    # converts nothing - it only makes the file lie about itself, so a client that
+    # trusts the extension (and the MIME type derived from it) downloads the episode
+    # and only then refuses to play it.
+    ext = normalize_extension(source_extension)
+    if ext in VIDEO_EXTENSIONS:
+        return ext
     return get_target_video_format()
 
 

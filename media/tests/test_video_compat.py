@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.conf import settings
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from media.models import MediaItem
@@ -233,3 +233,139 @@ class RepairVideoForItemTest(TestCase):
         )
 
         self.assertFalse(repair_video_for_item(item))
+
+
+class OutputExtensionTest(TestCase):
+    """The pipeline must not relabel a container it did not convert"""
+
+    def test_video_keeps_its_real_container(self):
+        """Regression: a .webm used to be renamed to content.mp4 without converting,
+        which made the file and its MIME type lie about what it was."""
+        from media.service.media_info import get_output_extension
+
+        self.assertEqual(get_output_extension('video', '.webm'), '.webm')
+        self.assertEqual(get_output_extension('video', '.mkv'), '.mkv')
+
+    def test_video_mp4_stays_mp4(self):
+        from media.service.media_info import get_output_extension
+
+        self.assertEqual(get_output_extension('video', '.mp4'), '.mp4')
+
+    def test_video_without_a_known_extension_defaults_to_mp4(self):
+        from media.service.media_info import get_output_extension
+
+        self.assertEqual(get_output_extension('video', None), '.mp4')
+        self.assertEqual(get_output_extension('video', '.bin'), '.mp4')
+
+    def test_audio_is_still_normalised(self):
+        """Audio genuinely is converted by the postprocessor, so it may be renamed"""
+        from media.service.media_info import get_output_extension
+
+        self.assertEqual(get_output_extension('audio', '.opus'), '.m4a')
+        self.assertEqual(get_output_extension('audio', '.mp3'), '.mp3')
+
+
+class SleepIntervalTest(TestCase):
+    """Rate-limit delays must compose with the defaults, not replace them"""
+
+    @override_settings(
+        STASHCAST_YTDLP_SLEEP_INTERVAL=5, STASHCAST_YTDLP_MAX_SLEEP_INTERVAL=30
+    )
+    def test_sleep_settings_reach_ytdlp_options(self):
+        from media.service.download import apply_network_opts
+
+        opts = apply_network_opts({'quiet': True})
+
+        self.assertEqual(opts['sleep_interval'], 5)
+        self.assertEqual(opts['max_sleep_interval'], 30)
+
+    @override_settings(STASHCAST_YTDLP_SLEEP_INTERVAL=0)
+    def test_disabled_by_default(self):
+        from media.service.download import apply_network_opts
+
+        opts = apply_network_opts({'quiet': True})
+
+        self.assertNotIn('sleep_interval', opts)
+
+    @override_settings(
+        STASHCAST_YTDLP_SLEEP_INTERVAL=5, STASHCAST_YTDLP_MAX_SLEEP_INTERVAL=30
+    )
+    def test_format_selector_is_untouched(self):
+        """The whole point: rate limiting no longer costs you the format defaults"""
+        self.assertIn('ba[ext=m4a]', settings.STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO)
+
+
+@unittest.skipUnless(HAS_FFMPEG, 'ffmpeg/ffprobe not available')
+class EnsurePlayableVideoTest(TestCase):
+    """Tests the download-time safety net"""
+
+    def setUp(self):
+        self.tmp = Path(settings.STASHCAST_MEDIA_DIR) / 'tmp-playable'
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.log = self.tmp / 'download.log'
+
+    def _webm_item(self, name='content.webm'):
+        subprocess.run(
+            [
+                'ffmpeg', '-v', 'error',
+                '-f', 'lavfi', '-i', 'testsrc=size=160x120:rate=10:duration=1',
+                '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+                '-c:v', 'libvpx-vp9', '-b:v', '50k', '-c:a', 'libopus',
+                str(self.tmp / name), '-y',
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return MediaItem.objects.create(
+            source_url='https://youtu.be/webm',
+            requested_type=MediaItem.REQUESTED_TYPE_VIDEO,
+            media_type=MediaItem.MEDIA_TYPE_VIDEO,
+            slug='playable',
+            content_path=name,
+        )
+
+    @override_settings(STASHCAST_ENSURE_PLAYABLE_VIDEO=True)
+    def test_webm_download_is_repacked(self):
+        """The exact production case: 'bv*+ba' yields VP9/Opus in WebM"""
+        from media.processing import ensure_playable_video
+
+        item = self._webm_item()
+        ensure_playable_video(item, self.tmp, self.log)
+
+        item.refresh_from_db()
+        self.assertEqual(item.content_path, 'content.mp4')
+        self.assertTrue(is_ios_compatible_video(self.tmp / item.content_path))
+
+    @override_settings(STASHCAST_ENSURE_PLAYABLE_VIDEO=True)
+    def test_no_leftover_files(self):
+        from media.processing import ensure_playable_video
+
+        item = self._webm_item()
+        ensure_playable_video(item, self.tmp, self.log)
+
+        names = sorted(p.name for p in self.tmp.iterdir())
+        self.assertEqual(names, ['content.mp4', 'download.log'])
+
+    @override_settings(STASHCAST_ENSURE_PLAYABLE_VIDEO=False)
+    def test_can_be_switched_off(self):
+        from media.processing import ensure_playable_video
+
+        item = self._webm_item()
+        ensure_playable_video(item, self.tmp, self.log)
+
+        item.refresh_from_db()
+        self.assertEqual(item.content_path, 'content.webm')
+
+    @override_settings(STASHCAST_ENSURE_PLAYABLE_VIDEO=True)
+    def test_audio_items_are_untouched(self):
+        from media.processing import ensure_playable_video
+
+        item = self._webm_item()
+        item.media_type = MediaItem.MEDIA_TYPE_AUDIO
+        item.save()
+
+        ensure_playable_video(item, self.tmp, self.log)
+
+        item.refresh_from_db()
+        self.assertEqual(item.content_path, 'content.webm')

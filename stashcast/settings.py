@@ -317,6 +317,16 @@ STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO = os.environ.get(
     + STASHCAST_CONVERT_SUBS
 )
 
+# Make sure a downloaded video can actually be played by podcast clients.
+# When the download ends up in a container/codec combination Apple Podcasts and iOS
+# reject (Matroska/WebM, AV1, VP9, Opus), it is repacked as MP4/H.264/AAC. Streams
+# already in a supported codec are copied, so the usual cost is an audio re-encode.
+# This is a safety net: pinning AAC in STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO avoids it
+# entirely and is much cheaper. Set to false to keep files exactly as downloaded.
+STASHCAST_ENSURE_PLAYABLE_VIDEO = os.environ.get(
+    'STASHCAST_ENSURE_PLAYABLE_VIDEO', 'true'
+).lower() in ('true', '1', 'yes')
+
 # FFmpeg args for transcoding (if needed)
 STASHCAST_DEFAULT_FFMPEG_ARGS_AUDIO = os.environ.get(
     'STASHCAST_DEFAULT_FFMPEG_ARGS_AUDIO', '-c:a aac -b:a 128k'
@@ -369,6 +379,16 @@ STASHCAST_YTDLP_IMPERSONATE = os.environ.get('STASHCAST_YTDLP_IMPERSONATE', None
 # Format: comma-separated NAME[:PATH], e.g. 'node' or 'node:/usr/local/bin/node'.
 # Supported names: deno, node, bun, quickjs.
 STASHCAST_YTDLP_JS_RUNTIMES = os.environ.get('STASHCAST_YTDLP_JS_RUNTIMES', None)
+
+# Optional: random delay between yt-dlp requests, in seconds, to reduce the chance of
+# YouTube's rate limiting / bot detection kicking in. 0 disables it.
+# Use these instead of putting --sleep-interval in STASHCAST_DEFAULT_YTDLP_ARGS_*:
+# those variables REPLACE the defaults wholesale, so adding a sleep flag there also
+# silently drops the format selector and would break playback compatibility.
+STASHCAST_YTDLP_SLEEP_INTERVAL = int(os.environ.get('STASHCAST_YTDLP_SLEEP_INTERVAL', '0'))
+STASHCAST_YTDLP_MAX_SLEEP_INTERVAL = int(
+    os.environ.get('STASHCAST_YTDLP_MAX_SLEEP_INTERVAL', '0')
+)
 
 # Retry counts for yt-dlp downloads (fragments of a DASH stream expire quickly,
 # so a few retries turn a transient 403 into a successful download).
