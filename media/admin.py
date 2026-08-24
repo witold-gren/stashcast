@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, mark_safe
@@ -201,6 +202,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'media_type',
         'group',
         'status',
+        'queue_position_display',
         # 'author',
         'publish_date_display',
         'file_size_display',
@@ -299,6 +301,42 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'archive_items',
         'unarchive_items',
     ]
+
+    def queue_position_display(self, obj):
+        """Position in the paced download queue, or why the item is not waiting in it.
+
+        The queue releases due items oldest-first by created_at, so the position is the
+        number of due queued items created before this one. Items serving a retry
+        backoff are skipped until their deadline, so they show that time instead of a
+        number - otherwise the order shown here would not match what actually happens.
+        """
+        if obj.status != MediaItem.STATUS_QUEUED:
+            return mark_safe('<span style="opacity: .4">&mdash;</span>')
+
+        now = timezone.now()
+        if obj.next_attempt_at and obj.next_attempt_at > now:
+            waiting_until = timezone.localtime(obj.next_attempt_at)
+            attempt = obj.download_attempts + 1
+            return format_html(
+                '<span title="Waiting out the retry backoff; not released until then.">'
+                '&#9203; {} (try {})</span>',
+                waiting_until.strftime('%H:%M'),
+                attempt,
+            )
+
+        ahead = (
+            MediaItem.objects.filter(
+                status=MediaItem.STATUS_QUEUED, created_at__lt=obj.created_at
+            )
+            .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
+            .count()
+        )
+        return format_html(
+            '<span title="Release order: oldest queued item first.">{}</span>', ahead + 1
+        )
+
+    queue_position_display.short_description = 'Queue'
+    queue_position_display.admin_order_field = 'created_at'
 
     def publish_date_display(self, obj):
         """Publication date on the source platform, or a clear marker when unknown.

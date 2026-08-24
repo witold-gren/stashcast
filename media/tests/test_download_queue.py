@@ -282,3 +282,101 @@ class WorkerHeartbeatTest(TestCase):
         with patch('media.tasks.heartbeat_path') as mock_path:
             mock_path.return_value.stat.return_value.st_mtime = time.time() - 600
             self.assertFalse(worker_is_alive())
+
+
+class QueuePositionColumnTest(TestCase):
+    """Tests the admin column that shows where an item sits in the queue.
+
+    The changelist's default ordering is by publication/download date, which says
+    nothing about release order - hence a dedicated column.
+    """
+
+    def setUp(self):
+        patch('media.tasks.process_media').start()
+        self.addCleanup(patch.stopall)
+
+        from django.contrib import admin as dj_admin
+
+        from media.admin import MediaItemAdmin
+
+        self.admin = MediaItemAdmin(MediaItem, dj_admin.site)
+
+    def _queued(self, title, minutes_ago, **kwargs):
+        item = make_item(status=MediaItem.STATUS_QUEUED, url=f'https://youtu.be/{title}', **kwargs)
+        item.title = title
+        item.save()
+        MediaItem.objects.filter(pk=item.pk).update(
+            created_at=timezone.now() - timedelta(minutes=minutes_ago)
+        )
+        item.refresh_from_db()
+        return item
+
+    def _value(self, item):
+        """Rendered column text, with tags stripped and HTML entities decoded."""
+        import html
+        import re
+
+        rendered = str(self.admin.queue_position_display(item))
+        return html.unescape(re.sub(r'<[^>]+>', '', rendered)).strip()
+
+    def test_positions_follow_created_at(self):
+        first = self._queued('pierwszy', 30)
+        second = self._queued('drugi', 20)
+        third = self._queued('trzeci', 10)
+
+        self.assertEqual(self._value(first), '1')
+        self.assertEqual(self._value(second), '2')
+        self.assertEqual(self._value(third), '3')
+
+    def test_position_matches_what_the_queue_releases(self):
+        """The column would be worse than nothing if it disagreed with reality"""
+        self._queued('pierwszy', 30)
+        self._queued('drugi', 20)
+
+        released = release_download_queue(limit=2)
+
+        self.assertEqual([r.title for r in released], ['pierwszy', 'drugi'])
+
+    def test_item_waiting_on_backoff_shows_its_deadline(self):
+        """It is skipped until then, so a position number would be misleading"""
+        item = self._queued(
+            'zepsuty', 40, next_attempt_at=timezone.now() + timedelta(minutes=12)
+        )
+
+        value = self._value(item)
+
+        self.assertNotEqual(value, '1')
+        self.assertIn('try', value)
+
+    def test_backoff_item_does_not_take_up_a_position(self):
+        self._queued('zepsuty', 40, next_attempt_at=timezone.now() + timedelta(minutes=12))
+        due = self._queued('gotowy', 30)
+
+        self.assertEqual(self._value(due), '1')
+
+    def test_non_queued_items_show_a_dash(self):
+        ready = make_item(status=MediaItem.STATUS_READY)
+
+        self.assertEqual(self._value(ready), '—')
+
+    def test_column_sorts_by_created_at(self):
+        from media.admin import MediaItemAdmin
+
+        self.assertEqual(
+            MediaItemAdmin.queue_position_display.admin_order_field, 'created_at'
+        )
+
+    def test_changelist_renders_the_column(self):
+        from django.contrib.auth import get_user_model
+        from django.test import Client
+
+        self._queued('pierwszy', 10)
+        User = get_user_model()
+        User.objects.create_superuser('qadmin', 'q@test.com', 'password')
+        client = Client()
+        client.login(username='qadmin', password='password')
+
+        response = client.get('/admin/media/mediaitem/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('queue_position_display', response.content.decode())
