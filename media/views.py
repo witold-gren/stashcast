@@ -11,7 +11,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from media.models import MediaGroup, MediaItem
-from media.tasks import generate_summary, process_media, process_media_batch, worker_is_alive
+from media.tasks import (
+    generate_summary,
+    process_media,
+    queue_items_for_download,
+    worker_is_alive,
+)
 from media.operations import resolve_requested_type
 from media.utils import build_media_url
 
@@ -235,10 +240,12 @@ def stash_view(request):
                         }
                     )
 
-                # Use batch processing to avoid SQLite lock contention
-                # This processes items sequentially with proper rate limiting
+                # Bulk adds go to the paced download queue: each URL is processed by
+                # the normal single-item path, a few at a time. That keeps writes
+                # serialized (the reason batch mode existed) without a second,
+                # separate implementation of the pipeline.
                 if created_guids:
-                    process_media_batch(created_guids)
+                    queue_items_for_download(created_guids)
 
                 # Handle redirect for progress page (redirect to first item)
                 if redirect_param == 'progress' and created_items:
@@ -501,10 +508,10 @@ def admin_stash_form_view(request):
                     first_guid = item.guid
 
             if created_guids:
-                # Enqueue batch processing task (single yt-dlp process for all URLs)
-                process_media_batch(created_guids)
+                # Paced queue rather than one big batch task - see queue_items_for_download
+                queue_items_for_download(created_guids)
 
-                msg = f'Queued {len(created_guids)} URLs for batch download'
+                msg = f'Queued {len(created_guids)} URLs for download'
                 if skipped_count > 0:
                     msg += f' ({skipped_count} invalid URLs skipped)'
                 messages.success(request, msg)
@@ -715,9 +722,9 @@ def admin_stash_confirm_multiple_view(request):
 
             created_guids.append(item.guid)
 
-        # Use batch processing to avoid SQLite lock contention
+        # Paced queue rather than one big batch task - see queue_items_for_download
         if created_guids:
-            process_media_batch(created_guids)
+            queue_items_for_download(created_guids)
 
         messages.success(request, f'Queued {len(created_guids)} items for download')
         return redirect('admin_stash_form')

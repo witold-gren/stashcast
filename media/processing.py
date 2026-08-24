@@ -254,7 +254,7 @@ def download_direct(item, tmp_dir, log_path):
         write_log(log_path, f'Could not extract metadata: {e}')
 
 
-def _apply_download_info(item, tmp_dir, download_info, log_path):
+def apply_download_info(item, tmp_dir, download_info, log_path):
     """Normalize download outputs into fixed filenames and item fields."""
     content_ext = get_output_extension(item.media_type, download_info.extension)
     content_file = f'content{content_ext}'
@@ -308,7 +308,7 @@ def download_ytdlp(item, tmp_dir, log_path):
         logger=lambda msg: write_log(log_path, msg),
     )
 
-    _apply_download_info(item, tmp_dir, download_info, log_path)
+    apply_download_info(item, tmp_dir, download_info, log_path)
 
 
 def ensure_playable_video(item, tmp_dir, log_path):

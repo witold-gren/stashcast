@@ -212,8 +212,7 @@ class StashFormGroupTest(TestCase):
         self.assertContains(response, 'name="new_group"')
         self.assertContains(response, 'Lekcje')
 
-    @patch('media.views.process_media_batch')
-    def test_bulk_submit_creates_and_assigns_new_group(self, mock_batch):
+    def test_bulk_submit_creates_and_assigns_new_group(self):
         self.client.post(
             '/admin/tools/add-url/',
             {
@@ -227,9 +226,10 @@ class StashFormGroupTest(TestCase):
         self.assertEqual(items.count(), 2)
         for item in items:
             self.assertEqual(item.group_id, group.pk)
+            # Bulk adds go to the paced queue instead of starting all at once
+            self.assertEqual(item.status, MediaItem.STATUS_QUEUED)
 
-    @patch('media.views.process_media_batch')
-    def test_bulk_submit_assigns_existing_group(self, mock_batch):
+    def test_bulk_submit_assigns_existing_group(self):
         group = MediaGroup.objects.create(name='Inne')
         self.client.post(
             '/admin/tools/add-url/',
@@ -242,8 +242,7 @@ class StashFormGroupTest(TestCase):
         item = MediaItem.objects.get(source_url='http://example.com/c')
         self.assertEqual(item.group_id, group.pk)
 
-    @patch('media.views.process_media_batch')
-    def test_new_group_takes_precedence_over_selected(self, mock_batch):
+    def test_new_group_takes_precedence_over_selected(self):
         existing = MediaGroup.objects.create(name='Inne')
         self.client.post(
             '/admin/tools/add-url/',

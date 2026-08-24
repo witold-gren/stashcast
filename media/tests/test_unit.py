@@ -1704,3 +1704,60 @@ class BatchProcessingSettingsTest(TestCase):
         self.assertTrue(hasattr(settings, 'STASHCAST_DEFAULT_YTDLP_ARGS_AUDIO'))
         self.assertTrue(hasattr(settings, 'STASHCAST_DEFAULT_YTDLP_ARGS_VIDEO'))
         self.assertTrue(hasattr(settings, 'STASHCAST_SUMMARY_SENTENCES'))
+
+
+class BatchDownloadFieldsTest(TestCase):
+    """Tests that batch mode records the same fields as a single download.
+
+    process_media_batch used to move the downloaded files into the item directory by
+    hand, without calling apply_download_info. Items ended up READY with no
+    content_path, so they had no file size, no MIME type, nothing to play and no
+    summary - and only a manual re-fetch repaired them.
+    """
+
+    def test_apply_download_info_records_content_fields(self):
+        import shutil
+        import tempfile
+        from pathlib import Path
+
+        from media.processing import apply_download_info
+        from media.service.download import DownloadedFileInfo
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        downloaded = tmp / 'downloads'
+        downloaded.mkdir()
+        source = downloaded / 'download.mp4'
+        source.write_bytes(b'x' * 4096)
+
+        item_dir = tmp / 'item'
+        item_dir.mkdir()
+        item = MediaItem.objects.create(
+            source_url='https://youtu.be/batch',
+            requested_type=MediaItem.REQUESTED_TYPE_VIDEO,
+            media_type=MediaItem.MEDIA_TYPE_VIDEO,
+            slug='batch-item',
+        )
+
+        apply_download_info(
+            item,
+            item_dir,
+            DownloadedFileInfo(
+                path=source, file_size=4096, extension='.mp4', mime_type='video/mp4'
+            ),
+            log_path=item_dir / 'download.log',
+        )
+
+        item.refresh_from_db()
+        self.assertEqual(item.content_path, 'content.mp4')
+        self.assertEqual(item.file_size, 4096)
+        self.assertTrue((item_dir / 'content.mp4').exists())
+
+    def test_batch_path_calls_apply_download_info(self):
+        """Guard the wiring: the batch task must not move files on its own again"""
+        import inspect
+
+        from media import tasks
+
+        source = inspect.getsource(tasks.process_media_batch.func)
+        self.assertIn('apply_download_info', source)

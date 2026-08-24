@@ -13,6 +13,7 @@ from huey.contrib.djhuey import db_periodic_task, db_task
 
 from media.models import MediaItem
 from media.processing import (
+    apply_download_info,
     download_direct,
     download_ytdlp,
     ensure_playable_video,
@@ -723,14 +724,26 @@ def process_media_batch(guids: List[str]):
             # Move downloaded files to item directories
             for url, download_info in batch_result.downloads.items():
                 guid = guid_by_video_url[url]
+                item = all_items[guid]
                 tmp_dir = item_tmp_dirs[guid]
                 log_path = item_log_paths[guid]
 
                 write_log(log_path, f'Downloaded: {download_info.path.name}')
 
-                for src_file in download_info.path.parent.iterdir():
-                    dst_file = tmp_dir / src_file.name
-                    shutil.move(str(src_file), str(dst_file))
+                # Normalize filenames and record content_path / file_size, exactly like
+                # the single-item path does. Moving the raw files across without this
+                # left every batch item READY but with no content_path, so it had no
+                # file size, no MIME type and nothing to play.
+                apply_download_info(item, tmp_dir, download_info, log_path)
+
+                # Anything else yt-dlp produced for this video (extra thumbnails,
+                # subtitle variants) follows into the item directory
+                leftovers = download_info.path.parent
+                if leftovers.exists():
+                    for src_file in leftovers.iterdir():
+                        shutil.move(str(src_file), str(tmp_dir / src_file.name))
+
+                ensure_playable_video(item, tmp_dir, log_path)
 
             # Handle download errors
             for url, error in batch_result.errors.items():
@@ -807,6 +820,27 @@ def process_media_batch(guids: List[str]):
                 shutil.rmtree(batch_tmp_dir)
         except Exception as e:
             write_log(batch_log_path, f'Failed to clean up: {e}')
+
+
+def queue_items_for_download(guids):
+    """Hand a list of existing items to the paced download queue.
+
+    Used for bulk adds: instead of one big batch task, each URL becomes a normal queued
+    item processed by process_media - the same well-tested path a single download takes,
+    released a few at a time so the workers are never flooded.
+
+    Args:
+        guids: Iterable of MediaItem GUIDs
+
+    Returns:
+        int: How many items were queued.
+    """
+    return MediaItem.objects.filter(guid__in=list(guids)).update(
+        status=MediaItem.STATUS_QUEUED,
+        download_attempts=0,
+        next_attempt_at=None,
+        error_message='',
+    )
 
 
 def repair_video_for_item(item, logger=None):
