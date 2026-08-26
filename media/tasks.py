@@ -60,6 +60,11 @@ def _backoff_delay_minutes(attempts):
 def schedule_retry_or_fail(item, reason):
     """Requeue a failed item, or mark it ERROR once its attempts are exhausted.
 
+    How long to wait - and whether to bother at all - depends on why the download
+    failed. A members-only or deleted video is never going to succeed, so it fails
+    immediately instead of burning the whole retry budget; a premiere is retried around
+    the time it actually airs; a bot check is given a long rest.
+
     Args:
         item: MediaItem whose download_attempts already includes the failed attempt
         reason: Error message to store on the item
@@ -67,21 +72,56 @@ def schedule_retry_or_fail(item, reason):
     Returns:
         bool: True when the item was requeued, False when it was marked ERROR.
     """
-    max_attempts = max(1, int(settings.STASHCAST_DOWNLOAD_MAX_ATTEMPTS))
+    from media.service.errors import (
+        CATEGORY_BLOCKED,
+        CATEGORY_PERMANENT,
+        CATEGORY_SCHEDULED,
+        classify_download_error,
+        explain_download_error,
+        parse_wait_hint,
+    )
 
-    if item.download_attempts >= max_attempts:
+    category = classify_download_error(reason)
+    hint = explain_download_error(category)
+
+    # Nothing we can do by trying again
+    if category == CATEGORY_PERMANENT:
         item.status = MediaItem.STATUS_ERROR
-        item.error_message = f'{reason} (gave up after {item.download_attempts} attempt(s))'
+        item.error_message = f'{reason} ({hint})'
         item.next_attempt_at = None
         item.save()
         return False
 
-    delay = _backoff_delay_minutes(item.download_attempts)
+    if category == CATEGORY_SCHEDULED:
+        max_attempts = max(1, int(settings.STASHCAST_DOWNLOAD_SCHEDULED_MAX_ATTEMPTS))
+    else:
+        max_attempts = max(1, int(settings.STASHCAST_DOWNLOAD_MAX_ATTEMPTS))
+
+    if item.download_attempts >= max_attempts:
+        message = f'{reason} (gave up after {item.download_attempts} attempt(s))'
+        item.status = MediaItem.STATUS_ERROR
+        item.error_message = f'{message} {hint}'.strip()
+        item.next_attempt_at = None
+        item.save()
+        return False
+
+    if category == CATEGORY_SCHEDULED:
+        # "Premieres in 3 hours" tells us exactly how long to wait
+        wait = parse_wait_hint(reason) or timedelta(
+            minutes=settings.STASHCAST_DOWNLOAD_RETRY_SCHEDULED_MINUTES
+        )
+    elif category == CATEGORY_BLOCKED:
+        wait = timedelta(minutes=settings.STASHCAST_DOWNLOAD_RETRY_BLOCKED_MINUTES)
+    else:
+        wait = timedelta(minutes=_backoff_delay_minutes(item.download_attempts))
+
+    minutes = max(1, int(wait.total_seconds() // 60))
     item.status = MediaItem.STATUS_QUEUED
     item.error_message = (
-        f'{reason} (attempt {item.download_attempts}/{max_attempts}, retrying in {delay} min)'
-    )
-    item.next_attempt_at = timezone.now() + timedelta(minutes=delay)
+        f'{reason} (attempt {item.download_attempts}/{max_attempts}, '
+        f'retrying in {minutes} min) {hint}'
+    ).strip()
+    item.next_attempt_at = timezone.now() + wait
     item.save()
     return True
 

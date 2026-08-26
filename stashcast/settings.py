@@ -441,6 +441,20 @@ STASHCAST_DOWNLOAD_QUEUE_BATCH = int(os.environ.get('STASHCAST_DOWNLOAD_QUEUE_BA
 # 1 disables retrying.
 STASHCAST_DOWNLOAD_MAX_ATTEMPTS = int(os.environ.get('STASHCAST_DOWNLOAD_MAX_ATTEMPTS', '3'))
 
+# Retry pacing per error category (see media/service/errors.py).
+# A premiere is retried around the time it airs rather than a few minutes later, and a
+# bot check / rate limit is given a long rest instead of hammering YouTube.
+STASHCAST_DOWNLOAD_RETRY_SCHEDULED_MINUTES = int(
+    os.environ.get('STASHCAST_DOWNLOAD_RETRY_SCHEDULED_MINUTES', '60')
+)
+STASHCAST_DOWNLOAD_RETRY_BLOCKED_MINUTES = int(
+    os.environ.get('STASHCAST_DOWNLOAD_RETRY_BLOCKED_MINUTES', '120')
+)
+# Premieres wait hours between attempts, so they get their own (larger) budget.
+STASHCAST_DOWNLOAD_SCHEDULED_MAX_ATTEMPTS = int(
+    os.environ.get('STASHCAST_DOWNLOAD_SCHEDULED_MAX_ATTEMPTS', '8')
+)
+
 # After this many minutes without an update, an item still sitting in PREFETCHING /
 # DOWNLOADING / PROCESSING is treated as abandoned (worker died mid-task) and requeued.
 STASHCAST_STUCK_TIMEOUT_MINUTES = int(os.environ.get('STASHCAST_STUCK_TIMEOUT_MINUTES', '30'))

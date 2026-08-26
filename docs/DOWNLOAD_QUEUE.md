@@ -185,6 +185,31 @@ Or from the CLI:
 This only reads metadata — no media is downloaded. Items whose source is gone (deleted or
 private videos) are counted as skipped and leave the rest of the run untouched.
 
+## Why a download failed, and what the queue does about it
+
+Failures are sorted into categories, because retrying is not always useful:
+
+| Category | Example message | What happens |
+|---|---|---|
+| **permanent** | `Join this channel to get access to members-only content` | **No retry at all.** Straight to ERROR - it cannot succeed without an account. Also: private, removed, region-blocked. |
+| **scheduled** | `Premieres in 3 hours` | Retried **after it airs**. The wait is parsed from the message (+10 min margin), otherwise `STASHCAST_DOWNLOAD_RETRY_SCHEDULED_MINUTES`. Gets its own larger attempt budget. |
+| **blocked** | `Sign in to confirm you're not a bot`, `HTTP 429` | Long rest (`STASHCAST_DOWNLOAD_RETRY_BLOCKED_MINUTES`, default 2 h) and a hint pointing at cookies. |
+| **transient** | `HTTP Error 403: Forbidden`, network blips | The normal exponential backoff: 5, 10, 20 min, capped at 6 h. |
+
+The category is decided from the error text (YouTube's own wording, passed through by
+yt-dlp), so an unrecognised message simply falls back to *transient* - the old
+behaviour. The stored error message says which category was chosen and what to do:
+
+```
+… Join this channel to get access to members-only content …
+(This video cannot be downloaded with the current configuration
+ (members-only, private, removed or region-blocked). Not retrying.)
+```
+
+A **blocked** item is the one worth acting on: it means YouTube does not trust the IP.
+Set `STASHCAST_YTDLP_COOKIES_FILE` (see [YOUTUBE_AUTH.md](YOUTUBE_AUTH.md)), then
+requeue the affected items with `./manage.py download_queue --retry-errors`.
+
 ## Settings
 
 | Variable | Default | Purpose |
