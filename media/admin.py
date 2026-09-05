@@ -76,6 +76,27 @@ class DemoReadOnlyAdminMixin:
         return actions
 
 
+# Extra "sync newest N" bulk actions offered on the group list. The plain sync action
+# already covers STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS and download_entire_channel covers
+# "everything"; these fill the gap when a channel needs a one-off deeper catch-up.
+EXTRA_SYNC_VIDEO_COUNTS = (10, 15, 20, 25, 30)
+
+
+def _make_sync_action(max_videos):
+    """Build a MediaGroupAdmin action that syncs the newest ``max_videos`` uploads.
+
+    Generated rather than written out five times over: the actions differ only in how
+    deep into the channel they look.
+    """
+
+    def sync_action(modeladmin, request, queryset):
+        modeladmin.run_channel_sync(request, queryset, max_videos=max_videos)
+
+    sync_action.__name__ = f'sync_youtube_last_{max_videos}'
+    sync_action.short_description = f'Sync YouTube channel - newest {max_videos} videos'
+    return sync_action
+
+
 @admin.register(MediaGroup)
 class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
     list_display = [
@@ -101,7 +122,11 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'youtube_last_synced_at',
         'created_at',
     ]
-    actions = ['sync_youtube_now', 'download_entire_channel']
+    actions = [
+        'sync_youtube_now',
+        *(f'sync_youtube_last_{count}' for count in EXTRA_SYNC_VIDEO_COUNTS),
+        'download_entire_channel',
+    ]
 
     def item_count_display(self, obj):
         return obj.items.count()
@@ -120,19 +145,42 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
 
     youtube_sync_display.short_description = 'YouTube sync'
 
-    def sync_youtube_now(self, request, queryset):
+    def run_channel_sync(self, request, queryset, max_videos=None):
+        """Queue the newest uploads of every selected channel.
+
+        Shared by all the "sync newest N" actions.
+
+        Args:
+            request: Admin request
+            queryset: Selected MediaGroup rows
+            max_videos: How deep to look into the channel. None uses
+                STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS.
+        """
         if is_demo_readonly(request.user):
             raise PermissionDenied('Demo users are not allowed to sync channels.')
         from media.operations import sync_group_channel
 
+        groups = list(queryset.exclude(youtube_channel_url=''))
+        if not groups:
+            self.message_user(
+                request, 'None of the selected groups has a YouTube channel configured.'
+            )
+            return
+
         total = 0
-        for group in queryset.exclude(youtube_channel_url=''):
-            total += len(sync_group_channel(group))
+        for group in groups:
+            total += len(sync_group_channel(group, max_videos=max_videos))
+
+        depth = max_videos or settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS
         self.message_user(
             request,
-            f'Queued {total} new YouTube upload(s). They are released a few at a time '
-            f'by the paced download queue.',
+            f'Checked the newest {depth} upload(s) of {len(groups)} channel(s): '
+            f'queued {total} new item(s). They are released a few at a time by the '
+            f'paced download queue.',
         )
+
+    def sync_youtube_now(self, request, queryset):
+        self.run_channel_sync(request, queryset)
 
     sync_youtube_now.short_description = (
         f'Sync YouTube channel now (newest {settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS} only)'
@@ -192,6 +240,13 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         return 'No image uploaded'
 
     image_preview.short_description = 'Image preview'
+
+
+# Attach the generated "sync newest N" actions. They are set on the class rather than
+# listed as callables so they behave exactly like the hand-written actions above.
+for _count in EXTRA_SYNC_VIDEO_COUNTS:
+    setattr(MediaGroupAdmin, f'sync_youtube_last_{_count}', _make_sync_action(_count))
+del _count
 
 
 @admin.register(MediaItem)

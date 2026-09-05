@@ -120,11 +120,33 @@ behaving exactly as before.
 > A group needs only one field because it just expresses intent. See
 > [ARCHITECTURE.md](ARCHITECTURE.md) for why the item keeps both.
 
-## Downloading an entire channel
+## Catching up on a channel
 
 The periodic sync only looks at the newest `STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS` uploads,
-which is what you want for keeping up. To fetch a channel's whole back-catalogue, select
-the group in admin → Groups and run:
+which is what you want for keeping up. When a channel needs a deeper one-off catch-up,
+select the group in admin → Groups and pick how far back to look:
+
+| Action | Looks at |
+|---|---|
+| **Sync YouTube channel now** | the newest `STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS` (default 5) |
+| **Sync YouTube channel - newest 10 / 15 / 20 / 25 / 30 videos** | exactly that many |
+| **Download ENTIRE channel (paced, background)** | everything |
+
+The depth options are generated from `EXTRA_SYNC_VIDEO_COUNTS` in `media/admin.py`; edit
+that tuple to offer different numbers.
+
+All of them skip videos already present in the group, so re-running only picks up what is
+missing, and everything found goes into the paced queue rather than starting at once.
+
+The CLI equivalent of a specific depth:
+
+```bash
+./manage.py sync_youtube --group lekcje --max 20
+```
+
+## Downloading an entire channel
+
+To fetch a channel's whole back-catalogue, select the group in admin → Groups and run:
 
 **Download ENTIRE channel (paced, background)**
 

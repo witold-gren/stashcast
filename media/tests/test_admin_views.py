@@ -10,7 +10,7 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from media.models import MediaItem
@@ -691,3 +691,99 @@ class ProxyHttpsUrlTest(TestCase):
         xml = response.content.decode()
         self.assertNotIn('http://testserver', xml)
         self.assertIn('https://testserver', xml)
+
+
+class GroupSyncDepthActionTest(TestCase):
+    """Tests the "sync newest N videos" bulk actions on the group list.
+
+    The actions are generated from EXTRA_SYNC_VIDEO_COUNTS rather than written out, so
+    these guard both the registration and that each one really looks that deep.
+    """
+
+    def setUp(self):
+        from media.models import MediaGroup
+
+        self.client = Client()
+        self.user = User.objects.create_superuser('depth', 'depth@test.com', 'password')
+        self.client.login(username='depth', password='password')
+        self.group = MediaGroup.objects.create(
+            name='Kanal', youtube_channel_url='https://www.youtube.com/@kanal'
+        )
+
+    def _run(self, action):
+        with patch(
+            'media.service.youtube_channel.list_channel_videos', return_value=[]
+        ) as mock_list:
+            response = self.client.post(
+                '/admin/media/mediagroup/',
+                {'action': action, '_selected_action': [self.group.pk]},
+                follow=True,
+            )
+        return response, mock_list
+
+    def test_every_configured_depth_has_an_action(self):
+        from django.contrib import admin as dj_admin
+
+        from media.admin import EXTRA_SYNC_VIDEO_COUNTS, MediaGroupAdmin
+        from media.models import MediaGroup
+
+        request = self.client.get('/admin/media/mediagroup/').wsgi_request
+        registered = MediaGroupAdmin(MediaGroup, dj_admin.site).get_actions(request)
+
+        for count in EXTRA_SYNC_VIDEO_COUNTS:
+            self.assertIn(f'sync_youtube_last_{count}', registered)
+
+    def test_action_labels_name_the_depth(self):
+        from django.contrib import admin as dj_admin
+
+        from media.admin import MediaGroupAdmin
+        from media.models import MediaGroup
+
+        request = self.client.get('/admin/media/mediagroup/').wsgi_request
+        registered = MediaGroupAdmin(MediaGroup, dj_admin.site).get_actions(request)
+
+        self.assertIn('newest 20 videos', str(registered['sync_youtube_last_20'][2]))
+
+    def test_each_action_passes_its_own_depth(self):
+        for count in (10, 15, 20, 25, 30):
+            with self.subTest(count=count):
+                _, mock_list = self._run(f'sync_youtube_last_{count}')
+                self.assertEqual(mock_list.call_args.kwargs['max_videos'], count)
+
+    @override_settings(STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS=5)
+    def test_default_action_still_uses_the_setting(self):
+        _, mock_list = self._run('sync_youtube_now')
+
+        self.assertEqual(mock_list.call_args.kwargs['max_videos'], 5)
+
+    def test_group_without_a_channel_is_reported(self):
+        from media.models import MediaGroup
+
+        plain = MediaGroup.objects.create(name='Bez kanalu')
+
+        with patch('media.service.youtube_channel.list_channel_videos') as mock_list:
+            response = self.client.post(
+                '/admin/media/mediagroup/',
+                {'action': 'sync_youtube_last_10', '_selected_action': [plain.pk]},
+                follow=True,
+            )
+
+        mock_list.assert_not_called()
+        self.assertContains(response, 'has a YouTube channel configured')
+
+    def test_queued_items_are_reported(self):
+        from media.models import MediaItem
+        from media.service.youtube_channel import ChannelVideo
+
+        videos = [ChannelVideo(url=f'https://youtu.be/v{i}', title=f'T{i}') for i in range(3)]
+        with patch('media.service.youtube_channel.list_channel_videos', return_value=videos):
+            response = self.client.post(
+                '/admin/media/mediagroup/',
+                {'action': 'sync_youtube_last_10', '_selected_action': [self.group.pk]},
+                follow=True,
+            )
+
+        self.assertContains(response, 'queued 3 new item(s)')
+        self.assertEqual(
+            MediaItem.objects.filter(status=MediaItem.STATUS_QUEUED).count(), 3
+        )
