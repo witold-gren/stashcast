@@ -396,6 +396,12 @@ def process_media(guid):
         log_path = final_dir / 'download.log'
         write_log(log_path, f'Moved to: {final_dir}')
 
+        # Measure what we actually ended up with, now that the file is in its final
+        # place. Doing it here keeps the stored measurement in step with the file: a
+        # re-download used to leave the previous file's duration behind, so an item
+        # repaired by re-fetching still showed up as incomplete forever.
+        record_download_duration(item, log_path)
+
         # READY
         item.status = MediaItem.STATUS_READY
         item.downloaded_at = timezone.now()
@@ -830,6 +836,8 @@ def process_media_batch(guids: List[str]):
                 log_path = final_dir / 'download.log'
                 write_log(log_path, f'Moved to: {final_dir}')
 
+                record_download_duration(item, log_path)
+
                 item.status = MediaItem.STATUS_READY
                 item.downloaded_at = timezone.now()
                 item.save()
@@ -881,6 +889,41 @@ def queue_items_for_download(guids):
         next_attempt_at=None,
         error_message='',
     )
+
+
+def record_download_duration(item, log_path=None):
+    """Measure a freshly downloaded file and note how it compares with the source.
+
+    Called at the end of every download so the stored measurement always describes the
+    file that is actually on disk. Without this the value only ever came from
+    ./manage.py check_durations, so re-downloading a truncated episode fixed the file
+    but left it flagged as incomplete.
+
+    Never raises: a file we cannot probe must not fail an otherwise good download.
+
+    Args:
+        item: MediaItem whose file has just been moved into place
+        log_path: Optional path to the item's download log
+    """
+    try:
+        gap = check_item_duration(item)
+    except Exception as e:
+        if log_path:
+            write_log(log_path, f'Could not measure duration: {e}')
+        return
+
+    if gap is None:
+        return
+
+    tolerance = settings.STASHCAST_DURATION_TOLERANCE_SECONDS
+    if log_path and gap > tolerance:
+        write_log(
+            log_path,
+            f'WARNING: file plays {item.file_duration_seconds}s but the source reports '
+            f'{item.duration_seconds}s (short by {gap}s) - the download is incomplete',
+        )
+    elif log_path:
+        write_log(log_path, f'Duration matches the source ({item.file_duration_seconds}s)')
 
 
 def measure_file_duration(item):

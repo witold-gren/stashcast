@@ -237,3 +237,85 @@ class DurationAdminTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_task.assert_called_once_with(item.guid)
+
+
+@unittest.skipUnless(HAS_FFMPEG, 'ffmpeg/ffprobe not available')
+class RecordDurationAfterDownloadTest(TestCase):
+    """The measurement must describe the file that is on disk right now.
+
+    It used to be written only by ./manage.py check_durations, so re-downloading a
+    truncated episode replaced the file but left the old measurement in place - the item
+    stayed flagged as incomplete no matter how many times it was fetched again.
+    """
+
+    def _item_with_file(self, slug, source_seconds, real_seconds, **kwargs):
+        item = make_item(slug, source_seconds, **kwargs)
+        base = Path(settings.STASHCAST_MEDIA_DIR) / slug
+        base.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(shutil.rmtree, base, True)
+        subprocess.run(
+            [
+                'ffmpeg', '-v', 'error',
+                '-f', 'lavfi', '-i', f'sine=frequency=440:duration={real_seconds}',
+                '-c:a', 'aac', str(base / 'content.m4a'), '-y',
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return item
+
+    def test_stale_measurement_is_replaced(self):
+        """The reported bug: a repaired file kept showing the old shortfall"""
+        from media.tasks import record_download_duration
+
+        item = self._item_with_file('naprawiony', 120, 119, file_duration_seconds=55)
+
+        record_download_duration(item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.file_duration_seconds, 119)
+        self.assertLessEqual(item.duration_gap_seconds, 3)
+
+    def test_unreadable_file_does_not_raise(self):
+        """Measuring is a nicety; it must never fail an otherwise good download"""
+        from media.tasks import record_download_duration
+
+        item = make_item('bez-pliku', 60)
+
+        record_download_duration(item, log_path=None)
+
+        item.refresh_from_db()
+        self.assertIsNone(item.file_duration_seconds)
+
+
+class DurationRecordedByPipelineTest(TestCase):
+    """Guards the wiring - the measurement is only useful if the pipeline runs it"""
+
+    def test_single_download_path_records_duration(self):
+        import inspect
+
+        from media import tasks
+
+        source = inspect.getsource(tasks.process_media.func)
+        self.assertIn('record_download_duration', source)
+
+    def test_batch_download_path_records_duration(self):
+        import inspect
+
+        from media import tasks
+
+        source = inspect.getsource(tasks.process_media_batch.func)
+        self.assertIn('record_download_duration', source)
+
+    def test_measurement_happens_after_the_move(self):
+        """get_absolute_content_path resolves against the final directory, so measuring
+        before the move would probe a path that does not exist yet."""
+        import inspect
+
+        from media import tasks
+
+        source = inspect.getsource(tasks.process_media.func)
+        self.assertLess(
+            source.index('shutil.move(str(tmp_dir), str(final_dir))'),
+            source.index('record_download_duration'),
+        )
