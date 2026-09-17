@@ -175,6 +175,22 @@ class MediaItem(models.Model):
     author = models.CharField(max_length=200, blank=True)
     publish_date = models.DateTimeField(null=True, blank=True)
     duration_seconds = models.IntegerField(null=True, blank=True)
+
+    # Duration actually measured in the downloaded file. duration_seconds above comes
+    # from the source metadata and is the truth; a large gap between the two means the
+    # file is incomplete and should be downloaded again. Stored rather than probed on
+    # demand so the admin can filter on it with a plain database query.
+    file_duration_seconds = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text='Duration measured in the downloaded file, filled in by '
+        './manage.py check_durations.',
+    )
+    duration_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the file duration was last measured.',
+    )
     extractor = models.CharField(max_length=100, blank=True)
     external_id = models.CharField(max_length=200, blank=True)
     webpage_url = models.URLField(max_length=2048, blank=True)
@@ -234,6 +250,16 @@ class MediaItem(models.Model):
     @property
     def has_error(self):
         return self.status == self.STATUS_ERROR
+
+    @property
+    def duration_gap_seconds(self):
+        """How far the file's real duration is from the source metadata, in seconds.
+
+        None when either side is unknown - that is "not checked", not "fine".
+        """
+        if self.duration_seconds is None or self.file_duration_seconds is None:
+            return None
+        return abs(self.duration_seconds - self.file_duration_seconds)
 
     @property
     def is_queued(self):

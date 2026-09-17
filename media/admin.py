@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
+from django.db.models import F, Q
+from django.db.models.functions import Abs
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, mark_safe
@@ -249,6 +252,42 @@ for _count in EXTRA_SYNC_VIDEO_COUNTS:
 del _count
 
 
+class DurationCheckFilter(admin.SimpleListFilter):
+    """Filter items by how well the downloaded file matches the source duration.
+
+    Lets you pull up every incomplete download at once instead of opening them one by
+    one. Requires ./manage.py check_durations (or the admin action) to have measured
+    the files first - anything unmeasured lands in "not checked yet", never in "ok".
+    """
+
+    title = 'Duration'
+    parameter_name = 'duration_check'
+
+    def lookups(self, request, model_admin):
+        tolerance = settings.STASHCAST_DURATION_TOLERANCE_SECONDS
+        return [
+            ('incomplete', f'Incomplete (off by more than {tolerance}s)'),
+            ('ok', 'Complete'),
+            ('unchecked', 'Not checked yet'),
+        ]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == 'unchecked':
+            return queryset.filter(file_duration_seconds__isnull=True)
+        if value not in ('incomplete', 'ok'):
+            return queryset
+
+        measured = queryset.filter(
+            file_duration_seconds__isnull=False, duration_seconds__isnull=False
+        ).annotate(gap=Abs(F('duration_seconds') - F('file_duration_seconds')))
+
+        tolerance = settings.STASHCAST_DURATION_TOLERANCE_SECONDS
+        if value == 'incomplete':
+            return measured.filter(gap__gt=tolerance)
+        return measured.filter(gap__lte=tolerance)
+
+
 @admin.register(MediaItem)
 class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
     list_display = [
@@ -259,6 +298,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'status',
         'queue_position_display',
         # 'author',
+        'duration_check_display',
         'publish_date_display',
         'file_size_display',
         'updated_at',
@@ -273,6 +313,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         # run the "Fetch publication date from source" action
         ('publish_date', admin.EmptyFieldListFilter),
         'publish_date',
+        DurationCheckFilter,
         'created_at',
         'downloaded_at',
     ]
@@ -351,6 +392,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'refetch_items',
         'requeue_items',
         'refresh_publish_dates',
+        'check_file_durations',
         'repair_videos',
         'regenerate_summaries',
         'archive_items',
@@ -392,6 +434,60 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
 
     queue_position_display.short_description = 'Queue'
     queue_position_display.admin_order_field = 'created_at'
+
+    def duration_check_display(self, obj):
+        """How the file's real duration compares with the source's.
+
+        Shows the gap rather than the raw numbers: that is the part that tells you
+        whether the download is complete.
+        """
+        gap = obj.duration_gap_seconds
+        if gap is None:
+            return mark_safe(
+                '<span style="opacity: .4" title="Not measured yet - run '
+                './manage.py check_durations or the &quot;Check file duration&quot; '
+                'action.">&mdash;</span>'
+            )
+
+        tolerance = settings.STASHCAST_DURATION_TOLERANCE_SECONDS
+        expected = obj.duration_seconds
+        actual = obj.file_duration_seconds
+        if gap <= tolerance:
+            return format_html(
+                '<span title="Source says {}s, file plays {}s.">ok</span>', expected, actual
+            )
+        return format_html(
+            '<span style="color: #dc3545" title="Source says {}s but the file plays only '
+            '{}s - the download is incomplete, fetch it again.">short {}s</span>',
+            expected,
+            actual,
+            gap,
+        )
+
+    duration_check_display.short_description = 'Duration'
+    duration_check_display.admin_order_field = 'file_duration_seconds'
+
+    def check_file_durations(self, request, queryset):
+        """Measure the selected files and record how far they are from the source."""
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to run checks.')
+        from media.tasks import check_duration_for_item
+
+        count = 0
+        for item in queryset.filter(status=MediaItem.STATUS_READY).exclude(content_path=''):
+            check_duration_for_item(item.guid)
+            count += 1
+
+        if not count:
+            self.message_user(request, 'No downloaded items selected.')
+            return
+        self.message_user(
+            request,
+            f'Measuring {count} file(s) in the background. Reload in a moment, then use '
+            f'the "Duration" filter to list the incomplete ones.',
+        )
+
+    check_file_durations.short_description = 'Check file duration against source'
 
     def publish_date_display(self, obj):
         """Publication date on the source platform, or a clear marker when unknown.
@@ -497,15 +593,30 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         """
         if is_demo_readonly(request.user):
             raise PermissionDenied('Demo users are not allowed to requeue items.')
+
+        # Requeuing something a worker is downloading right now would start a second run
+        # against the same tmp directory and corrupt the file. Items whose download has
+        # genuinely stalled are picked up by recover_stuck_items instead.
+        stale_before = timezone.now() - timedelta(
+            minutes=settings.STASHCAST_STUCK_TIMEOUT_MINUTES
+        )
         count = 0
+        skipped = 0
         for item in queryset:
+            if item.status in MediaItem.IN_PROGRESS_STATUSES and item.updated_at > stale_before:
+                skipped += 1
+                continue
             item.status = MediaItem.STATUS_QUEUED
             item.download_attempts = 0
             item.next_attempt_at = None
             item.error_message = ''
             item.save()
             count += 1
-        self.message_user(request, f'Requeued {count} item(s) for the paced download queue.')
+
+        message = f'Requeued {count} item(s) for the paced download queue.'
+        if skipped:
+            message += f' Skipped {skipped} item(s) that are downloading right now.'
+        self.message_user(request, message)
 
     requeue_items.short_description = 'Requeue selected items (paced queue)'
 

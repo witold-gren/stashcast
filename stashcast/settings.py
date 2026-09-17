@@ -441,6 +441,14 @@ STASHCAST_DOWNLOAD_QUEUE_BATCH = int(os.environ.get('STASHCAST_DOWNLOAD_QUEUE_BA
 # 1 disables retrying.
 STASHCAST_DOWNLOAD_MAX_ATTEMPTS = int(os.environ.get('STASHCAST_DOWNLOAD_MAX_ATTEMPTS', '3'))
 
+# How far a downloaded file's real duration may differ from the duration reported by
+# the source before it is treated as incomplete. Containers round and encoders pad, so
+# a second or two is normal; a bigger gap means the download was cut short.
+# Used by ./manage.py check_durations and the "Duration" filter in the admin.
+STASHCAST_DURATION_TOLERANCE_SECONDS = int(
+    os.environ.get('STASHCAST_DURATION_TOLERANCE_SECONDS', '3')
+)
+
 # Retry pacing per error category (see media/service/errors.py).
 # A premiere is retried around the time it airs rather than a few minutes later, and a
 # bot check / rate limit is given a long rest instead of hammering YouTube.

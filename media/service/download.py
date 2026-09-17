@@ -256,7 +256,9 @@ def download_direct(url, out_path, logger=None):
     )
 
 
-def download_ytdlp(url, resolved_type, temp_dir, ytdlp_extra_args='', logger=None):
+def download_ytdlp(
+    url, resolved_type, temp_dir, ytdlp_extra_args='', logger=None, on_progress=None
+):
     """
     Download media using yt-dlp, with Apple Podcasts fallback.
 
@@ -266,6 +268,9 @@ def download_ytdlp(url, resolved_type, temp_dir, ytdlp_extra_args='', logger=Non
         temp_dir: Temporary directory for download (Path object or str)
         ytdlp_extra_args: Additional yt-dlp arguments from settings
         logger: Optional callable(str) for logging
+        on_progress: Optional callable() invoked as the download progresses. Lets the
+            caller prove the download is still alive - see the heartbeat in
+            media/processing.py.
 
     Returns:
         DownloadedFileInfo
@@ -273,7 +278,9 @@ def download_ytdlp(url, resolved_type, temp_dir, ytdlp_extra_args='', logger=Non
     from media.service.resolve import _is_apple_podcasts_url
 
     try:
-        return _download_ytdlp_inner(url, resolved_type, temp_dir, ytdlp_extra_args, logger)
+        return _download_ytdlp_inner(
+            url, resolved_type, temp_dir, ytdlp_extra_args, logger, on_progress
+        )
     except Exception:
         if _is_apple_podcasts_url(url):
             return _download_apple_podcasts(url, temp_dir, logger)
@@ -367,7 +374,9 @@ def _download_apple_podcasts(url, temp_dir, logger=None):
     )
 
 
-def _download_ytdlp_inner(url, resolved_type, temp_dir, ytdlp_extra_args='', logger=None):
+def _download_ytdlp_inner(
+    url, resolved_type, temp_dir, ytdlp_extra_args='', logger=None, on_progress=None
+):
     """Download media using yt-dlp (inner implementation)."""
 
     def log(message):
@@ -406,6 +415,10 @@ def _download_ytdlp_inner(url, resolved_type, temp_dir, ytdlp_extra_args='', log
         # Proxy, cookies and retry settings shared by all yt-dlp calls
         apply_network_opts(ydl_opts, logger=logger)
 
+        # Let the caller observe that the download is still running
+        if on_progress:
+            ydl_opts['progress_hooks'] = [lambda status: on_progress()]
+
         # Parse and apply extra args from settings
         return parse_ytdlp_extra_args(ytdlp_extra_args, ydl_opts)
 
@@ -416,11 +429,25 @@ def _download_ytdlp_inner(url, resolved_type, temp_dir, ytdlp_extra_args='', log
     # artefacts), so only files this function creates may be cleaned up on a retry
     preexisting = {f.name for f in temp_dir.iterdir()}
 
+    def is_partial_artifact(path):
+        """True for yt-dlp's half-written download files.
+
+        These must go even when they were already on disk. A worker killed outright -
+        a container restart or OOM - leaves a .part behind without ever running the
+        cleanup, and yt-dlp resumes from it (continuedl defaults to True). Resuming a
+        stale part file appends the rest of the stream onto a beginning that may come
+        from a different format or a different CDN response, which produces a file
+        that plays from the middle.
+        """
+        return path.suffix in ('.part', '.ytdl', '.temp') or '.part-Frag' in path.name
+
     def run(ydl_opts):
         # Drop leftovers from a failed attempt so a retry cannot resume a
         # partial file that belongs to a different format
         for leftover in temp_dir.iterdir():
-            if leftover.name not in preexisting and leftover.is_file():
+            if not leftover.is_file():
+                continue
+            if leftover.name not in preexisting or is_partial_artifact(leftover):
                 leftover.unlink()
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

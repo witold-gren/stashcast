@@ -787,3 +787,63 @@ class GroupSyncDepthActionTest(TestCase):
         self.assertEqual(
             MediaItem.objects.filter(status=MediaItem.STATUS_QUEUED).count(), 3
         )
+
+
+class RequeueGuardTest(TestCase):
+    """Requeuing a live download would start a second run against the same tmp dir"""
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_superuser('rq', 'rq@test.com', 'password')
+        self.client.login(username='rq', password='password')
+
+    def _item(self, slug, status, minutes_since_update=0):
+        from datetime import timedelta
+
+        item = MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            status=status,
+        )
+        MediaItem.objects.filter(pk=item.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=minutes_since_update)
+        )
+        item.refresh_from_db()
+        return item
+
+    def _requeue(self, *items):
+        return self.client.post(
+            '/admin/media/mediaitem/',
+            {'action': 'requeue_items', '_selected_action': [i.guid for i in items]},
+            follow=True,
+        )
+
+    @override_settings(STASHCAST_STUCK_TIMEOUT_MINUTES=30)
+    def test_active_download_is_not_requeued(self):
+        item = self._item('zywe', MediaItem.STATUS_DOWNLOADING, minutes_since_update=1)
+
+        response = self._requeue(item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_DOWNLOADING)
+        self.assertContains(response, 'downloading right now')
+
+    @override_settings(STASHCAST_STUCK_TIMEOUT_MINUTES=30)
+    def test_stalled_download_can_still_be_requeued(self):
+        item = self._item('zawieszone', MediaItem.STATUS_DOWNLOADING, minutes_since_update=90)
+
+        self._requeue(item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_QUEUED)
+
+    def test_failed_item_is_requeued_as_before(self):
+        item = self._item('bledne', MediaItem.STATUS_ERROR)
+
+        self._requeue(item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_QUEUED)
+        self.assertEqual(item.download_attempts, 0)

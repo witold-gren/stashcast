@@ -883,6 +883,122 @@ def queue_items_for_download(guids):
     )
 
 
+def measure_file_duration(item):
+    """Measure how long an item's downloaded file actually plays for.
+
+    Args:
+        item: MediaItem to measure
+
+    Returns:
+        int or None: Duration in seconds, or None when there is no readable file.
+    """
+    from media.service.media_info import extract_ffprobe_metadata
+
+    path = item.get_absolute_content_path()
+    if not path or not Path(path).exists():
+        return None
+
+    metadata = extract_ffprobe_metadata(path)
+    return (metadata or {}).get('duration_seconds')
+
+
+def check_item_duration(item, logger=None):
+    """Store the real duration of an item's file and report how far off it is.
+
+    ``duration_seconds`` comes from the source metadata and is the truth; the measured
+    duration comes from the file on disk. A large gap means the download was cut short
+    and the item should be fetched again.
+
+    Args:
+        item: MediaItem to check
+        logger: Optional callable(str) for logging
+
+    Returns:
+        int or None: The gap in seconds, or None when the file could not be measured.
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    measured = measure_file_duration(item)
+    if measured is None:
+        log(f'  No readable file: {item.title or item.source_url}')
+        return None
+
+    item.file_duration_seconds = measured
+    item.duration_checked_at = timezone.now()
+    item.save(update_fields=['file_duration_seconds', 'duration_checked_at', 'updated_at'])
+
+    gap = item.duration_gap_seconds
+    if gap is None:
+        log(f'  No source duration to compare against: {item.title or item.source_url}')
+    return gap
+
+
+def check_durations(limit=None, only_unchecked=False, tolerance=None, logger=None):
+    """Measure file durations for downloaded items and collect the bad ones.
+
+    Args:
+        limit: Maximum number of items to check (None = all)
+        only_unchecked: Skip items that already have a measurement
+        tolerance: Allowed gap in seconds (default STASHCAST_DURATION_TOLERANCE_SECONDS)
+        logger: Optional callable(str) for logging
+
+    Returns:
+        tuple[int, list[MediaItem], int]: (checked, mismatched items, skipped)
+    """
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    if tolerance is None:
+        tolerance = settings.STASHCAST_DURATION_TOLERANCE_SECONDS
+
+    items = MediaItem.objects.filter(status=MediaItem.STATUS_READY).exclude(content_path='')
+    if only_unchecked:
+        items = items.filter(file_duration_seconds__isnull=True)
+    items = items.order_by('-downloaded_at')
+    if limit:
+        items = items[: int(limit)]
+
+    checked = 0
+    skipped = 0
+    mismatched = []
+    for item in items:
+        gap = check_item_duration(item, logger=logger)
+        if gap is None:
+            skipped += 1
+            continue
+        checked += 1
+        if gap > tolerance:
+            mismatched.append(item)
+            log(
+                f'  SHORT by {gap}s (expected {item.duration_seconds}s, '
+                f'file {item.file_duration_seconds}s): {item.title or item.source_url}'
+            )
+
+    log(f'Durations: {checked} checked, {len(mismatched)} off by more than {tolerance}s, '
+        f'{skipped} skipped')
+    return checked, mismatched, skipped
+
+
+@db_task()
+def check_duration_for_item(guid):
+    """Background task: measure one item's file duration."""
+    try:
+        item = MediaItem.objects.get(guid=guid)
+    except MediaItem.DoesNotExist:
+        return
+
+    try:
+        check_item_duration(item)
+    except Exception:
+        # A single unreadable file must not take down a batch
+        pass
+
+
 def repair_video_for_item(item, logger=None):
     """Rewrite an item's video file into an MP4 that Apple Podcasts / iOS can play.
 

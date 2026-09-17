@@ -239,7 +239,7 @@ requeue the affected items with `./manage.py download_queue --retry-errors`.
 | `STASHCAST_DOWNLOAD_QUEUE_MINUTES` | `5` | How often the queue releases work (clamped to 1–59) |
 | `STASHCAST_DOWNLOAD_QUEUE_BATCH` | `1` | How many items per release |
 | `STASHCAST_DOWNLOAD_MAX_ATTEMPTS` | `3` | Attempts before an item becomes `ERROR` (`1` disables retrying) |
-| `STASHCAST_STUCK_TIMEOUT_MINUTES` | `30` | Idle time after which an in-progress item counts as abandoned |
+| `STASHCAST_STUCK_TIMEOUT_MINUTES` | `30` | Time **without progress** after which an in-progress item counts as abandoned |
 | `STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS` | `180` | Heartbeat age at which the worker is reported down |
 | `STASHCAST_YOUTUBE_SYNC_HOURS` | `3` | How often channels are checked for new uploads |
 | `STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS` | `5` | How many recent uploads each check considers |
@@ -250,6 +250,57 @@ temporarily:
 ```bash
 STASHCAST_DOWNLOAD_QUEUE_BATCH=5   # ~1440 items/day
 ```
+
+## Finding incomplete downloads
+
+An item can finish as READY with a log full of success and still hold a file that is
+shorter than the episode. Nothing in the pipeline notices, because yt-dlp reported
+success - only playback does.
+
+Every item stores the duration its source reported (`duration_seconds`). This measures
+how long the file on disk actually plays and records it, so incomplete downloads can be
+found in bulk:
+
+```bash
+./manage.py check_durations                  # measure everything, list the bad ones
+./manage.py check_durations --only-unchecked # skip items already measured
+./manage.py check_durations --tolerance 5    # allow a 5 second gap
+./manage.py check_durations -n 50            # only the 50 most recent
+./manage.py check_durations --requeue        # also queue the bad ones for re-download
+```
+
+```
+1 incomplete file(s):
+  expected 1282s, got 623s (short by 659s) - Przestań być łatwym celem…
+```
+
+A gap of a second or two is normal - containers round and encoders pad - so the default
+tolerance is `STASHCAST_DURATION_TOLERANCE_SECONDS` (3 s).
+
+In the admin, the item list has a **Duration** column (`ok`, `short 659s`, or `—` when
+not measured yet) and a **Duration** filter with *Incomplete*, *Complete* and *Not
+checked yet*. The usual workflow is: run the command once, filter to *Incomplete*,
+select all, and apply **Requeue selected items**. The **Check file duration against
+source** action measures a hand-picked selection instead.
+
+Items that have never been measured show as *Not checked yet* and never as *Complete*,
+so an unmeasured file can't be mistaken for a verified one.
+
+## Long downloads
+
+A running download reports progress back to the database roughly once a minute, so
+`STASHCAST_STUCK_TIMEOUT_MINUTES` means "no progress for N minutes", not "running for N
+minutes". A four-hour download is therefore never mistaken for an abandoned one.
+
+This matters because the recovery pass used to requeue any download that simply took
+longer than the timeout. The queue then released it a second time while the first was
+still running, both runs shared the same `tmp-<guid>` directory, and the second deleted
+the first's half-written file. The download reported success but the media file was
+truncated - and only a manual immediate re-fetch produced a correct one. Slow settings
+such as `STASHCAST_YTDLP_SLEEP_INTERVAL` made it far easier to hit.
+
+For the same reason the admin's **Requeue selected items** action skips items that are
+downloading right now and says so; genuinely stalled ones are still requeued.
 
 ## Worker liveness
 

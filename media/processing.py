@@ -15,11 +15,13 @@ All functions work with MediaItem model instances and handle:
 
 import os
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.utils import timezone
 
 from media.models import MediaItem
 from media.service.download import download_direct as service_download_direct
@@ -282,6 +284,40 @@ def apply_download_info(item, tmp_dir, download_info, log_path):
     item.save()
 
 
+def make_download_heartbeat(item, interval_seconds=60):
+    """Build a callback that proves a running download is still alive.
+
+    Nothing writes to the database between "status = DOWNLOADING" and the end of the
+    download, so a download that takes longer than STASHCAST_STUCK_TIMEOUT_MINUTES used
+    to look abandoned to recover_stuck_items. It was then requeued and released again
+    while still running, and the second run shared the same tmp-<guid> directory as the
+    first - deleting its half-written file and racing it. The result was a corrupt or
+    truncated media file that only a manual re-fetch could fix.
+
+    Touching updated_at as the download progresses keeps STASHCAST_STUCK_TIMEOUT_MINUTES
+    meaning "no progress for N minutes" rather than "running for N minutes".
+
+    Args:
+        item: MediaItem being downloaded
+        interval_seconds: Minimum gap between database writes
+
+    Returns:
+        callable: Pass as ``on_progress`` to the download service.
+    """
+    state = {'last': 0.0}
+
+    def heartbeat():
+        now = time.monotonic()
+        if now - state['last'] < interval_seconds:
+            return
+        state['last'] = now
+        # queryset.update() bypasses auto_now and touches nothing else, so it cannot
+        # clobber fields the running task is about to write
+        MediaItem.objects.filter(pk=item.pk).update(updated_at=timezone.now())
+
+    return heartbeat
+
+
 def download_ytdlp(item, tmp_dir, log_path):
     """
     Download media using yt-dlp.
@@ -306,6 +342,7 @@ def download_ytdlp(item, tmp_dir, log_path):
         tmp_dir,
         ytdlp_extra_args=ytdlp_args,
         logger=lambda msg: write_log(log_path, msg),
+        on_progress=make_download_heartbeat(item),
     )
 
     apply_download_info(item, tmp_dir, download_info, log_path)
