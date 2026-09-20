@@ -469,3 +469,144 @@ class TranscriptFeedTest(TestCase):
         xml = Client().get('/feeds/audio.xml').content.decode()
 
         self.assertIn('subtitles.vtt', xml)
+
+
+class TranscriptStatusTest(TestCase):
+    """Where an item is in the transcription process must be visible at every stage.
+
+    Without this the admin action was a black box: no way to tell what was waiting,
+    what was running, what had finished, or why something produced nothing.
+    """
+
+    def setUp(self):
+        self.admin = __import__(
+            'media.admin', fromlist=['MediaItemAdmin']
+        ).MediaItemAdmin(MediaItem, __import__('django.contrib.admin', fromlist=['site']).site)
+
+    def _item(self, slug='a', **kwargs):
+        return MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            status=MediaItem.STATUS_READY,
+            content_path='content.m4a',
+            **kwargs,
+        )
+
+    def _column(self, item):
+        import html as html_module
+        import re
+
+        rendered = str(self.admin.transcript_display(item))
+        return html_module.unescape(re.sub(r'<[^>]+>', '', rendered)).strip()
+
+    def test_queue_transcription_marks_items_as_waiting(self):
+        from media.tasks import queue_transcription
+
+        item = self._item()
+
+        with patch('media.tasks.transcribe_media'):
+            queued = queue_transcription([item])
+
+        self.assertEqual(queued, 1)
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, MediaItem.TRANSCRIPT_QUEUED)
+
+    def test_column_shows_each_stage(self):
+        self.assertEqual(
+            self._column(self._item('q', transcript_status=MediaItem.TRANSCRIPT_QUEUED)),
+            '⏳ waiting',
+        )
+        self.assertEqual(
+            self._column(self._item('r', transcript_status=MediaItem.TRANSCRIPT_RUNNING)),
+            '● transcribing',
+        )
+        self.assertEqual(
+            self._column(self._item('f', transcript_status=MediaItem.TRANSCRIPT_FAILED)),
+            'failed',
+        )
+        self.assertEqual(
+            self._column(self._item('d', transcript='jeden dwa trzy')), '3 words'
+        )
+        self.assertEqual(self._column(self._item('n')), '—')
+
+    def test_failure_does_not_touch_the_download_error(self):
+        """A good download whose transcription failed must not look like a bad download"""
+        from media.tasks import transcribe_media
+
+        item = self._item(error_message='')
+
+        with patch('media.tasks.transcribe_item', side_effect=RuntimeError('whisper down')):
+            transcribe_media.call_local(item.guid)
+
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, MediaItem.TRANSCRIPT_FAILED)
+        self.assertIn('whisper down', item.transcript_error)
+        self.assertEqual(item.error_message, '')
+
+    def test_is_transcribing_covers_waiting_and_running(self):
+        self.assertTrue(
+            self._item('q', transcript_status=MediaItem.TRANSCRIPT_QUEUED).is_transcribing
+        )
+        self.assertTrue(
+            self._item('r', transcript_status=MediaItem.TRANSCRIPT_RUNNING).is_transcribing
+        )
+        self.assertFalse(
+            self._item('d', transcript_status=MediaItem.TRANSCRIPT_DONE).is_transcribing
+        )
+
+
+class TranscriptVisibilityTest(TestCase):
+    """The text has to be readable, not just counted"""
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_superuser('vis', 'vis@test.com', 'password')
+        self.client.login(username='vis', password='password')
+
+    def _item(self, **kwargs):
+        return MediaItem.objects.create(
+            source_url='https://youtu.be/a',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug='a',
+            title='Odcinek',
+            status=MediaItem.STATUS_READY,
+            content_path='content.m4a',
+            **kwargs,
+        )
+
+    def test_transcript_text_is_shown_on_the_item_page(self):
+        item = self._item(transcript='To jest treść transkrypcji')
+
+        html_out = self.client.get(f'/admin/media/mediaitem/{item.guid}/change/').content.decode()
+
+        self.assertIn('treść transkrypcji', html_out)
+
+    def test_failure_reason_is_shown_on_the_item_page(self):
+        item = self._item(
+            transcript_status=MediaItem.TRANSCRIPT_FAILED,
+            transcript_error='Cannot reach the server at whisper:10300',
+        )
+
+        html_out = self.client.get(f'/admin/media/mediaitem/{item.guid}/change/').content.decode()
+
+        self.assertIn('Cannot reach the server', html_out)
+
+    def test_filter_lists_what_is_waiting(self):
+        self._item(transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+
+        html_out = self.client.get(
+            '/admin/media/mediaitem/?transcript_status__exact=QUEUED'
+        ).content.decode()
+
+        self.assertIn('Odcinek', html_out)
+
+    def test_filter_lists_what_is_running(self):
+        self._item(transcript_status=MediaItem.TRANSCRIPT_RUNNING)
+
+        html_out = self.client.get(
+            '/admin/media/mediaitem/?transcript_status__exact=RUNNING'
+        ).content.decode()
+
+        self.assertIn('Odcinek', html_out)

@@ -315,7 +315,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         ('publish_date', admin.EmptyFieldListFilter),
         'publish_date',
         DurationCheckFilter,
-        ('transcript', admin.EmptyFieldListFilter),
+        'transcript_status',
         'created_at',
         'downloaded_at',
     ]
@@ -340,6 +340,8 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'archived_at',
         'preview_display',
         'log_display',
+        'transcript_text_display',
+        'transcript_created_at',
     ]
 
     fieldsets = [
@@ -383,6 +385,17 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             },
         ),
         ('Summary', {'fields': ['summary']}),
+        (
+            'Transcript',
+            {
+                'fields': [
+                    'transcript_status',
+                    'transcript_created_at',
+                    'transcript_path',
+                    'transcript_text_display',
+                ]
+            },
+        ),
         ('Logs & Preview', {'fields': ['log_display', 'preview_display']}),
         (
             'Timestamps',
@@ -504,12 +517,11 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 level=messages.WARNING,
             )
             return
-        from media.tasks import transcribe_media
+        from media.tasks import queue_transcription
 
-        count = 0
-        for item in queryset.filter(status=MediaItem.STATUS_READY).exclude(content_path=''):
-            transcribe_media(item.guid)
-            count += 1
+        count = queue_transcription(
+            queryset.filter(status=MediaItem.STATUS_READY).exclude(content_path='')
+        )
 
         if not count:
             self.message_user(request, 'No downloaded items selected.')
@@ -524,16 +536,45 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
     create_transcripts.short_description = 'Create transcript'
 
     def transcript_display(self, obj):
-        """Whether the item has a transcript, and how long it is."""
+        """Where this item is in the transcription process, at a glance."""
+        if obj.transcript_status == MediaItem.TRANSCRIPT_QUEUED:
+            return mark_safe('<span title="Waiting for the worker">&#9203; waiting</span>')
+        if obj.transcript_status == MediaItem.TRANSCRIPT_RUNNING:
+            return mark_safe(
+                '<span style="color: #17a2b8" title="Being transcribed right now">'
+                '&#9679; transcribing</span>'
+            )
+        if obj.transcript_status == MediaItem.TRANSCRIPT_FAILED:
+            return format_html(
+                '<span style="color: #dc3545" title="{}">failed</span>',
+                obj.transcript_error or 'Unknown error',
+            )
+        if obj.transcript:
+            return format_html(
+                '<span title="{} characters">{} words</span>',
+                len(obj.transcript),
+                len(obj.transcript.split()),
+            )
+        return mark_safe('<span style="opacity: .4">&mdash;</span>')
+
+    transcript_display.short_description = 'Transcript'
+    transcript_display.admin_order_field = 'transcript_status'
+
+    def transcript_text_display(self, obj):
+        """The transcript itself, readable on the item page."""
+        if obj.transcript_error:
+            return format_html(
+                '<p style="color: #dc3545">{}</p>', obj.transcript_error
+            )
         if not obj.transcript:
-            return mark_safe('<span style="opacity: .4">&mdash;</span>')
+            return 'No transcript yet'
         return format_html(
-            '<span title="{} characters">{} words</span>',
-            len(obj.transcript),
-            len(obj.transcript.split()),
+            '<pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; '
+            'max-height: 400px; overflow: auto; white-space: pre-wrap;">{}</pre>',
+            obj.transcript,
         )
 
-    transcript_display.short_description = 'Transcript' 
+    transcript_text_display.short_description = 'Transcript text' 
 
     def publish_date_display(self, obj):
         """Publication date on the source platform, or a clear marker when unknown.

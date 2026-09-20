@@ -928,6 +928,10 @@ def transcribe_item(item, logger=None):
         raise TranscriptionError('No media file on disk to transcribe')
 
     log(f'Transcribing {item.title or item.source_url}')
+    item.transcript_status = MediaItem.TRANSCRIPT_RUNNING
+    item.transcript_error = ''
+    item.save(update_fields=['transcript_status', 'transcript_error', 'updated_at'])
+
     segments = transcribe_file(
         source,
         uri=settings.STASHCAST_WHISPER_URI,
@@ -945,12 +949,40 @@ def transcribe_item(item, logger=None):
     item.transcript = text
     item.transcript_path = transcript_file.name
     item.transcript_created_at = timezone.now()
+    item.transcript_status = MediaItem.TRANSCRIPT_DONE
+    item.transcript_error = ''
     item.save(
-        update_fields=['transcript', 'transcript_path', 'transcript_created_at', 'updated_at']
+        update_fields=[
+            'transcript',
+            'transcript_path',
+            'transcript_created_at',
+            'transcript_status',
+            'transcript_error',
+            'updated_at',
+        ]
     )
 
     log(f'  {len(segments)} segment(s), {len(text)} characters')
     return len(segments)
+
+
+def queue_transcription(items):
+    """Mark items as waiting for transcription and hand them to the worker.
+
+    Args:
+        items: Iterable of MediaItem
+
+    Returns:
+        int: How many were queued.
+    """
+    count = 0
+    for item in items:
+        item.transcript_status = MediaItem.TRANSCRIPT_QUEUED
+        item.transcript_error = ''
+        item.save(update_fields=['transcript_status', 'transcript_error', 'updated_at'])
+        transcribe_media(item.guid)
+        count += 1
+    return count
 
 
 @db_task()
@@ -964,9 +996,12 @@ def transcribe_media(guid):
     try:
         transcribe_item(item)
     except Exception as e:
-        # Record the reason on the item so the admin shows why nothing appeared
-        item.error_message = f'Transcription failed: {e}'
-        item.save(update_fields=['error_message', 'updated_at'])
+        # Deliberately not error_message: that field describes the download, and a
+        # perfectly downloaded episode whose transcription failed must not look like a
+        # broken download.
+        item.transcript_status = MediaItem.TRANSCRIPT_FAILED
+        item.transcript_error = str(e)
+        item.save(update_fields=['transcript_status', 'transcript_error', 'updated_at'])
 
 
 def record_download_duration(item, log_path=None):

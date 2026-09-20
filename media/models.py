@@ -214,6 +214,34 @@ class MediaItem(models.Model):
         help_text='WebVTT transcript file inside the item directory.',
     )
     transcript_created_at = models.DateTimeField(null=True, blank=True)
+
+    # Where this item is in the transcription process. Kept apart from `status` and
+    # `error_message`, which describe the download: an episode can be downloaded
+    # perfectly and still fail to transcribe, and conflating the two would make a good
+    # download look broken.
+    TRANSCRIPT_QUEUED = 'QUEUED'
+    TRANSCRIPT_RUNNING = 'RUNNING'
+    TRANSCRIPT_DONE = 'DONE'
+    TRANSCRIPT_FAILED = 'FAILED'
+
+    TRANSCRIPT_STATUS_CHOICES = [
+        (TRANSCRIPT_QUEUED, _('Waiting')),
+        (TRANSCRIPT_RUNNING, _('Transcribing')),
+        (TRANSCRIPT_DONE, _('Done')),
+        (TRANSCRIPT_FAILED, _('Failed')),
+    ]
+
+    transcript_status = models.CharField(
+        max_length=10,
+        blank=True,
+        choices=TRANSCRIPT_STATUS_CHOICES,
+        db_index=True,
+        help_text='Where this item is in the transcription process.',
+    )
+    transcript_error = models.TextField(
+        blank=True,
+        help_text='Why the last transcription attempt failed.',
+    )
     file_size = models.BigIntegerField(null=True, blank=True)
     mime_type = models.CharField(max_length=100, blank=True)
 
@@ -317,6 +345,10 @@ class MediaItem(models.Model):
     @property
     def has_transcript(self):
         return bool(self.transcript_path or self.transcript)
+
+    @property
+    def is_transcribing(self):
+        return self.transcript_status in (self.TRANSCRIPT_QUEUED, self.TRANSCRIPT_RUNNING)
 
     def get_absolute_transcript_path(self):
         """Absolute path to the transcript file, or None when there is none."""
