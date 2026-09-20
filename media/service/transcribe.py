@@ -145,7 +145,8 @@ def transcribe_pcm(pcm, uri, language=None, timeout=300):
         timeout: Socket timeout in seconds
 
     Returns:
-        str: The transcribed text (empty when the window held no speech).
+        tuple[str, str|None]: The text (empty when the window held no speech) and the
+        language the server reports having heard, when it reports one.
 
     Raises:
         TranscriptionError: On connection problems or an unusable answer.
@@ -179,7 +180,7 @@ def transcribe_pcm(pcm, uri, language=None, timeout=300):
                         )
                     event_type, data = event
                     if event_type == 'transcript':
-                        return (data.get('text') or '').strip()
+                        return (data.get('text') or '').strip(), data.get('language')
     except OSError as e:
         raise TranscriptionError(f'Cannot reach the speech-to-text server at {host}:{port}: {e}')
 
@@ -265,6 +266,13 @@ def transcribe_file(
     segments: List[TranscriptSegment] = []
     windows = int(total_seconds // window_seconds) + 1
 
+    # Whisper decides the language per request. Left to itself it can hear Polish in one
+    # window and then start translating the next one into English, which produces a
+    # transcript that switches language halfway through. So: whatever the first window
+    # reports is pinned for every window after it.
+    effective_language = language
+    log(f'  language: {language or "auto-detect"}')
+
     for index in range(windows):
         start = index * window_seconds
         if start >= total_seconds:
@@ -275,7 +283,14 @@ def transcribe_file(
         if not pcm:
             continue
 
-        text = transcribe_pcm(pcm, uri=uri, language=language, timeout=timeout)
+        text, detected = transcribe_pcm(
+            pcm, uri=uri, language=effective_language, timeout=timeout
+        )
+
+        if not effective_language and detected:
+            effective_language = detected
+            log(f'  detected {detected}; pinning it for the remaining windows')
+
         log(f'  {_timestamp(start)} ({index + 1}/{windows}) {len(text)} chars')
         if text:
             segments.append(TranscriptSegment(start, start + length, text))

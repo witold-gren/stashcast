@@ -52,6 +52,15 @@ class MediaGroup(models.Model):
         (DOWNLOAD_TYPE_VIDEO, _('Video')),
     ]
 
+    transcribe_new_downloads = models.BooleanField(
+        default=False,
+        help_text=(
+            'Transcribe every new download in this group automatically. Requires '
+            'STASHCAST_WHISPER_ENABLED; existing items are untouched - use the '
+            '"Create transcript" action for those.'
+        ),
+    )
+
     download_type = models.CharField(
         max_length=10,
         choices=DOWNLOAD_TYPE_CHOICES,

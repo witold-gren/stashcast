@@ -454,11 +454,15 @@ STASHCAST_WHISPER_ENABLED = os.environ.get('STASHCAST_WHISPER_ENABLED', '').lowe
 # Address of the Wyoming server: 'tcp://host:port', 'host:port' or 'host' (port 10300).
 STASHCAST_WHISPER_URI = os.environ.get('STASHCAST_WHISPER_URI', 'tcp://whisper:10300')
 
-# Language hint for the model. Defaults to the site language, which is what the
-# subtitle settings above already use. Empty lets the server detect it.
-STASHCAST_WHISPER_LANGUAGE = os.environ.get(
-    'STASHCAST_WHISPER_LANGUAGE', STASHCAST_SUBTITLE_LANGUAGE
-)
+# Language of the audio, e.g. 'pl'. Empty means "let the model work it out", in which
+# case the language heard in the first window is reused for the whole episode.
+#
+# Deliberately NOT defaulting to the site language: the language of the admin interface
+# says nothing about the language people speak in the episodes. Defaulting to it told
+# Whisper that Polish recordings were English, and the model answered with an English
+# translation of what it heard - a transcript that starts in one language and continues
+# in another. Set this explicitly whenever you know the language.
+STASHCAST_WHISPER_LANGUAGE = os.environ.get('STASHCAST_WHISPER_LANGUAGE', '')
 
 # Whisper returns one block of text with no timings, so audio is sent in windows of this
 # many seconds and the window boundaries become the transcript's cue timings. Smaller

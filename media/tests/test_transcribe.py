@@ -7,6 +7,7 @@ framing were wrong, the stand-in could not read the events back.
 """
 
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -42,9 +43,10 @@ class FakeWyomingServer:
     shows up as a failure here rather than only against real hardware.
     """
 
-    def __init__(self, reply='rozpoznany tekst', fail=False):
+    def __init__(self, reply='rozpoznany tekst', fail=False, detected_language=None):
         self.reply = reply
         self.fail = fail
+        self.detected_language = detected_language
         self.events = []
         self.audio = b''
         self._socket = socket.socket()
@@ -90,8 +92,19 @@ class FakeWyomingServer:
                         self._reply(conn)
                     break
 
+    def requested_languages(self):
+        """The language asked for on each connection, in order."""
+        return [
+            data.get('language')
+            for event_type, data in self.events
+            if event_type == 'transcribe'
+        ]
+
     def _reply(self, conn):
-        data = json.dumps({'text': self.reply}).encode('utf-8')
+        body = {'text': self.reply}
+        if self.detected_language:
+            body['language'] = self.detected_language
+        data = json.dumps(body).encode('utf-8')
         header = {'type': 'transcript', 'version': '1.5.0', 'data_length': len(data)}
         conn.sendall(json.dumps(header).encode('utf-8') + b'\n' + data)
 
@@ -125,9 +138,17 @@ class TranscribePcmTest(TestCase):
         self.addCleanup(self.server.stop)
 
     def test_returns_the_text_the_server_sent(self):
-        text = transcribe_pcm(b'\x00\x01' * 100, uri=self.server.uri, language='pl')
+        text, _ = transcribe_pcm(b'\x00\x01' * 100, uri=self.server.uri, language='pl')
 
         self.assertEqual(text, 'rozpoznany tekst')
+
+    def test_returns_the_language_the_server_reports(self):
+        server = FakeWyomingServer(detected_language='pl')
+        self.addCleanup(server.stop)
+
+        _, language = transcribe_pcm(b'\x00\x01' * 10, uri=server.uri)
+
+        self.assertEqual(language, 'pl')
 
     def test_sends_the_expected_event_sequence(self):
         transcribe_pcm(b'\x00\x01' * 100, uri=self.server.uri, language='pl')
@@ -610,3 +631,265 @@ class TranscriptVisibilityTest(TestCase):
         ).content.decode()
 
         self.assertIn('Odcinek', html_out)
+
+
+@unittest.skipUnless(HAS_FFMPEG, 'ffmpeg not available')
+class LanguageConsistencyTest(TestCase):
+    """The whole transcript must come out in one language.
+
+    Whisper decides the language per request. Left to itself it heard Polish in the
+    first window and then started translating the following ones into English, so a
+    single episode came back half Polish, half English. Whatever the first window
+    reports is therefore pinned for every window after it.
+    """
+
+    def _audio_item(self, seconds=12):
+        base = Path(settings.STASHCAST_MEDIA_DIR) / 'jezyk'
+        base.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(shutil.rmtree, base, True)
+        subprocess.run(
+            [
+                'ffmpeg', '-v', 'error',
+                '-f', 'lavfi', '-i', f'sine=frequency=440:duration={seconds}',
+                '-c:a', 'aac', str(base / 'content.m4a'), '-y',
+            ],
+            check=True,
+            capture_output=True,
+        )
+        return base / 'content.m4a'
+
+    def test_detected_language_is_reused_for_later_windows(self):
+        from media.service.transcribe import transcribe_file
+
+        server = FakeWyomingServer(detected_language='pl')
+        self.addCleanup(server.stop)
+        path = self._audio_item(seconds=12)
+
+        transcribe_file(path, uri=server.uri, language=None, window_seconds=5)
+
+        asked = server.requested_languages()
+        self.assertEqual(len(asked), 3)
+        # First window asks for nothing, the rest are pinned to what came back
+        self.assertIsNone(asked[0])
+        self.assertEqual(asked[1:], ['pl', 'pl'])
+
+    def test_configured_language_is_used_for_every_window(self):
+        from media.service.transcribe import transcribe_file
+
+        server = FakeWyomingServer(detected_language='en')
+        self.addCleanup(server.stop)
+        path = self._audio_item(seconds=12)
+
+        transcribe_file(path, uri=server.uri, language='pl', window_seconds=5)
+
+        self.assertEqual(server.requested_languages(), ['pl', 'pl', 'pl'])
+
+    def test_server_reporting_no_language_is_harmless(self):
+        from media.service.transcribe import transcribe_file
+
+        server = FakeWyomingServer()
+        self.addCleanup(server.stop)
+        path = self._audio_item(seconds=12)
+
+        segments = transcribe_file(path, uri=server.uri, language=None, window_seconds=5)
+
+        self.assertEqual(len(segments), 3)
+
+
+class WhisperLanguageDefaultTest(TestCase):
+    """The site language must not be mistaken for the language people speak"""
+
+    def test_default_is_auto_detect_not_the_interface_language(self):
+        """Inheriting LANGUAGE_CODE told Whisper that Polish episodes were English"""
+        self.assertEqual(
+            os.environ.get('STASHCAST_WHISPER_LANGUAGE', ''),
+            '',
+            'test environment should not pin the language',
+        )
+        self.assertEqual(settings.STASHCAST_WHISPER_LANGUAGE, '')
+
+
+class GroupTranscriptionTest(TestCase):
+    """Per-group opt-in for transcribing new downloads, plus the group-wide action"""
+
+    def setUp(self):
+        from media.models import MediaGroup
+
+        self.MediaGroup = MediaGroup
+        self.client = Client()
+        User.objects.create_superuser('grp', 'grp@test.com', 'password')
+        self.client.login(username='grp', password='password')
+
+    def _group(self, name='Grupa', **kwargs):
+        return self.MediaGroup.objects.create(name=name, **kwargs)
+
+    def _item(self, slug, group=None):
+        return MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            media_type=MediaItem.MEDIA_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            status=MediaItem.STATUS_READY,
+            content_path='content.m4a',
+            group=group,
+        )
+
+    def test_the_flag_is_off_by_default(self):
+        """Transcribing costs real time, so a group must ask for it"""
+        self.assertFalse(self._group().transcribe_new_downloads)
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True)
+    def test_new_download_in_an_enabled_group_is_queued(self):
+        from media.tasks import queue_transcription_if_enabled
+
+        item = self._item('a', self._group(transcribe_new_downloads=True))
+
+        with patch('media.tasks.transcribe_media'):
+            self.assertTrue(queue_transcription_if_enabled(item))
+
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, MediaItem.TRANSCRIPT_QUEUED)
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True)
+    def test_disabled_group_is_left_alone(self):
+        from media.tasks import queue_transcription_if_enabled
+
+        item = self._item('a', self._group(transcribe_new_downloads=False))
+
+        with patch('media.tasks.transcribe_media') as mock_task:
+            self.assertFalse(queue_transcription_if_enabled(item))
+
+        mock_task.assert_not_called()
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True)
+    def test_item_without_a_group_is_left_alone(self):
+        from media.tasks import queue_transcription_if_enabled
+
+        self.assertFalse(queue_transcription_if_enabled(self._item('a')))
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=False)
+    def test_global_switch_still_wins(self):
+        from media.tasks import queue_transcription_if_enabled
+
+        item = self._item('a', self._group(transcribe_new_downloads=True))
+
+        self.assertFalse(queue_transcription_if_enabled(item))
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True)
+    def test_a_transcription_failure_never_breaks_the_download(self):
+        """The download task treats an exception here as a failed download, so this
+        must swallow its own errors: a transcript is a bonus, not worth the episode."""
+        from media.tasks import queue_transcription_if_enabled
+
+        item = self._item('a', self._group(transcribe_new_downloads=True))
+
+        with patch('media.tasks.queue_transcription', side_effect=RuntimeError('whisper down')):
+            queued = queue_transcription_if_enabled(item)
+
+        self.assertFalse(queued)
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_READY)
+        self.assertEqual(item.content_path, 'content.m4a')
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True)
+    def test_group_action_transcribes_everything_in_the_group(self):
+        group = self._group()
+        self._item('a', group)
+        self._item('b', group)
+        self._item('c')  # different group - must not be touched
+
+        with patch('media.tasks.transcribe_media') as mock_task:
+            response = self.client.post(
+                '/admin/media/mediagroup/',
+                {'action': 'transcribe_group_items', '_selected_action': [group.pk]},
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_task.call_count, 2)
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=False)
+    def test_group_action_explains_when_switched_off(self):
+        group = self._group()
+        self._item('a', group)
+
+        with patch('media.tasks.transcribe_media') as mock_task:
+            response = self.client.post(
+                '/admin/media/mediagroup/',
+                {'action': 'transcribe_group_items', '_selected_action': [group.pk]},
+                follow=True,
+            )
+
+        mock_task.assert_not_called()
+        self.assertContains(response, 'STASHCAST_WHISPER_ENABLED')
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True)
+    def test_download_pipeline_calls_the_hook(self):
+        """Guards the wiring, not just the helper"""
+        import inspect
+
+        from media import tasks
+
+        self.assertIn(
+            'queue_transcription_if_enabled', inspect.getsource(tasks.process_media.func)
+        )
+        self.assertIn(
+            'queue_transcription_if_enabled',
+            inspect.getsource(tasks.process_media_batch.func),
+        )
+
+
+class FeedTimelineTest(TestCase):
+    """What Apple needs to line a timed transcript up against the audio"""
+
+    def _item(self, **kwargs):
+        return MediaItem.objects.create(
+            source_url='https://youtu.be/a',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            media_type=MediaItem.MEDIA_TYPE_AUDIO,
+            slug='odcinek',
+            title='Odcinek',
+            status=MediaItem.STATUS_READY,
+            content_path='content.m4a',
+            file_size=1234,
+            downloaded_at=timezone.now(),
+            **kwargs,
+        )
+
+    def _feed(self):
+        return Client().get('/feeds/audio.xml').content.decode()
+
+    def test_episode_duration_is_published(self):
+        """Without it the feed gives a timed transcript no timeline to attach to"""
+        self._item(duration_seconds=1272)
+
+        self.assertIn('<itunes:duration>21:12</itunes:duration>', self._feed())
+
+    def test_duration_over_an_hour_includes_hours(self):
+        self._item(duration_seconds=3661)
+
+        self.assertIn('<itunes:duration>1:01:01</itunes:duration>', self._feed())
+
+    def test_measured_duration_is_used_when_the_source_gave_none(self):
+        self._item(duration_seconds=None, file_duration_seconds=95)
+
+        self.assertIn('<itunes:duration>1:35</itunes:duration>', self._feed())
+
+    def test_no_duration_tag_when_the_length_is_unknown(self):
+        self._item()
+
+        self.assertNotIn('itunes:duration', self._feed())
+
+    @override_settings(STASHCAST_WHISPER_LANGUAGE='pl', STASHCAST_SUBTITLE_LANGUAGE='en')
+    def test_generated_transcript_declares_the_whisper_language(self):
+        """The transcript is in the language Whisper worked in, not the interface one"""
+        self._item(duration_seconds=60, transcript_path='transcript.vtt', transcript='tekst')
+
+        self.assertIn('language="pl"', self._feed())
+
+    @override_settings(STASHCAST_WHISPER_LANGUAGE='pl', STASHCAST_SUBTITLE_LANGUAGE='en')
+    def test_downloaded_subtitles_keep_the_subtitle_language(self):
+        self._item(duration_seconds=60, subtitle_path='subtitles.vtt')
+
+        self.assertIn('language="en"', self._feed())

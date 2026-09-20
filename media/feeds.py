@@ -21,6 +21,16 @@ _PUBLISH_ORDER = (
 )
 
 
+def _format_duration(seconds):
+    """Format a length in seconds as the HH:MM:SS Apple expects in itunes:duration."""
+    seconds = int(seconds)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f'{hours:d}:{minutes:02d}:{secs:02d}'
+    return f'{minutes:d}:{secs:02d}'
+
+
 class StashcastRSSFeed(Rss201rev2Feed):
     """
     RSS 2.0 feed generator that always emits an <image> tag when provided.
@@ -71,6 +81,11 @@ class StashcastRSSFeed(Rss201rev2Feed):
                     'medium': media_content.get('medium', ''),
                 },
             )
+        duration = item.get('duration')
+        if duration:
+            # Apple builds its episode timeline from this. A timed transcript has
+            # nothing to line itself up against when the duration is missing.
+            handler.addQuickElement('itunes:duration', duration)
         transcript = item.get('transcript')
         if transcript:
             handler.addQuickElement(
@@ -188,13 +203,17 @@ class BaseFeed(Feed):
         media_content = self._media_content(item)
         if media_content:
             extra['media_content'] = media_content
+        duration = item.duration_seconds or item.file_duration_seconds
+        if duration:
+            extra['duration'] = _format_duration(duration)
+
         transcript_url = self._transcript_url(item)
         if transcript_url:
             extra['transcript'] = transcript_url
             extra['transcript_type'] = get_mime_type(
                 item.transcript_path or item.subtitle_path
             )
-            extra['transcript_language'] = settings.STASHCAST_SUBTITLE_LANGUAGE
+            extra['transcript_language'] = self._transcript_language(item)
         return extra
 
     def _media_content(self, item):
@@ -211,6 +230,17 @@ class BaseFeed(Feed):
     def _thumbnail_url(self, item):
         """Return absolute thumbnail URL for an item, if available."""
         return build_media_url(item, item.thumbnail_path, absolute_builder=self.absolute_url)
+
+    def _transcript_language(self, item):
+        """Language to declare for the item's transcript.
+
+        A generated transcript is in whatever language Whisper was told to work in, not
+        the language of the admin interface. Downloaded subtitles follow the subtitle
+        setting, as before.
+        """
+        if item.transcript_path and settings.STASHCAST_WHISPER_LANGUAGE:
+            return settings.STASHCAST_WHISPER_LANGUAGE
+        return settings.STASHCAST_SUBTITLE_LANGUAGE
 
     def _transcript_url(self, item):
         """Absolute URL of the item's transcript, if there is one.

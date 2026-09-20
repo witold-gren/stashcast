@@ -107,6 +107,7 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'name',
         'slug',
         'download_type',
+        'transcribe_new_downloads',
         'item_count_display',
         'youtube_sync_display',
         'created_at',
@@ -121,6 +122,7 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'image',
         'image_preview',
         'download_type',
+        'transcribe_new_downloads',
         'youtube_channel_url',
         'youtube_last_synced_at',
         'created_at',
@@ -129,6 +131,7 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'sync_youtube_now',
         *(f'sync_youtube_last_{count}' for count in EXTRA_SYNC_VIDEO_COUNTS),
         'download_entire_channel',
+        'transcribe_group_items',
     ]
 
     def item_count_display(self, obj):
@@ -219,6 +222,42 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         )
 
     download_entire_channel.short_description = 'Download ENTIRE channel (paced, background)'
+
+    def transcribe_group_items(self, request, queryset):
+        """Transcribe every downloaded item in the selected groups.
+
+        For catching up on what a group already holds; the per-group checkbox only
+        covers items downloaded from now on.
+        """
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to create transcripts.')
+        if not settings.STASHCAST_WHISPER_ENABLED:
+            self.message_user(
+                request,
+                'Speech to text is switched off. Set STASHCAST_WHISPER_ENABLED=true and '
+                'point STASHCAST_WHISPER_URI at your Wyoming server.',
+                level=messages.WARNING,
+            )
+            return
+        from media.tasks import queue_transcription
+
+        items = MediaItem.objects.filter(
+            group__in=queryset, status=MediaItem.STATUS_READY
+        ).exclude(content_path='')
+        count = queue_transcription(items)
+
+        if not count:
+            self.message_user(request, 'The selected groups hold no downloaded items.')
+            return
+
+        language = settings.STASHCAST_WHISPER_LANGUAGE or 'auto-detect'
+        self.message_user(
+            request,
+            f'Transcribing {count} item(s) from {queryset.count()} group(s), '
+            f'language: {language}. Watch the Transcript column on the item list.',
+        )
+
+    transcribe_group_items.short_description = 'Create transcript for all items in group' 
 
     def image_thumbnail(self, obj):
         url = build_group_image_url(obj)
@@ -526,11 +565,12 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         if not count:
             self.message_user(request, 'No downloaded items selected.')
             return
+        language = settings.STASHCAST_WHISPER_LANGUAGE or 'auto-detect'
         self.message_user(
             request,
             f'Transcribing {count} item(s) in the background against '
-            f'{settings.STASHCAST_WHISPER_URI}. Long recordings take a while - the '
-            f'Transcript column fills in as they finish.',
+            f'{settings.STASHCAST_WHISPER_URI}, language: {language}. Long recordings '
+            f'take a while - the Transcript column fills in as they finish.',
         )
 
     create_transcripts.short_description = 'Create transcript'

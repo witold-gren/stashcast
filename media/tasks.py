@@ -415,6 +415,9 @@ def process_media(guid):
 
         clear_progress(item.guid)
 
+        # Transcribe when the item's group is set up for it
+        queue_transcription_if_enabled(item, log_path)
+
         # Generate summary if subtitles are available
         if item.subtitle_path and settings.STASHCAST_SUMMARY_SENTENCES > 0:
             write_log(log_path, 'Enqueuing summary generation task')
@@ -848,6 +851,8 @@ def process_media_batch(guids: List[str]):
 
                 clear_progress(guid)
 
+                queue_transcription_if_enabled(item, log_path)
+
                 if item.subtitle_path and settings.STASHCAST_SUMMARY_SENTENCES > 0:
                     generate_summary(item.guid)
 
@@ -927,7 +932,10 @@ def transcribe_item(item, logger=None):
     if not source or not Path(source).exists():
         raise TranscriptionError('No media file on disk to transcribe')
 
-    log(f'Transcribing {item.title or item.source_url}')
+    log(
+        f'Transcribing {item.title or item.source_url} '
+        f'(language: {settings.STASHCAST_WHISPER_LANGUAGE or "auto-detect"})'
+    )
     item.transcript_status = MediaItem.TRANSCRIPT_RUNNING
     item.transcript_error = ''
     item.save(update_fields=['transcript_status', 'transcript_error', 'updated_at'])
@@ -964,6 +972,43 @@ def transcribe_item(item, logger=None):
 
     log(f'  {len(segments)} segment(s), {len(text)} characters')
     return len(segments)
+
+
+def queue_transcription_if_enabled(item, log_path=None):
+    """Start a transcript for a freshly downloaded item when its group asks for it.
+
+    Opt-in per group and off by default: transcription costs real time on the Whisper
+    machine, and most groups do not need it.
+
+    Never raises. This runs inside the download task, whose error handling marks the
+    item as failed and schedules a re-download - so letting a transcription problem
+    escape would throw away a file that downloaded perfectly. A transcript is a bonus;
+    it must never cost you the episode.
+
+    Args:
+        item: MediaItem that has just finished downloading
+        log_path: Optional path to the item's download log
+
+    Returns:
+        bool: True when transcription was queued.
+    """
+    if not settings.STASHCAST_WHISPER_ENABLED:
+        return False
+
+    group = item.group
+    if not group or not group.transcribe_new_downloads:
+        return False
+
+    try:
+        queue_transcription([item])
+    except Exception as e:
+        if log_path:
+            write_log(log_path, f'Could not queue transcription (download is fine): {e}')
+        return False
+
+    if log_path:
+        write_log(log_path, f'Queued for transcription (group "{group.name}")')
+    return True
 
 
 def queue_transcription(items):

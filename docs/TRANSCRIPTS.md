@@ -23,9 +23,30 @@ shared Docker network (then `whisper` is the container name) or by host and port
 |----------|---------|---------|
 | `STASHCAST_WHISPER_ENABLED` | `false` | Turns the feature on |
 | `STASHCAST_WHISPER_URI` | `tcp://whisper:10300` | `tcp://host:port`, `host:port` or `host` |
-| `STASHCAST_WHISPER_LANGUAGE` | site language | Language hint, e.g. `pl`. Empty = let the model detect it |
+| `STASHCAST_WHISPER_LANGUAGE` | *(auto-detect)* | Language of the **audio**, e.g. `pl` |
 | `STASHCAST_WHISPER_WINDOW_SECONDS` | `15` | Length of each audio window (minimum 5) |
 | `STASHCAST_WHISPER_TIMEOUT_SECONDS` | `300` | Socket timeout for one window |
+
+## Language
+
+This is the language **people speak in the episodes** — not the language of the admin
+interface. Getting it wrong is not harmless: told that a Polish recording is English,
+Whisper answers with an English translation of what it heard, and the transcript comes
+back half in one language and half in the other.
+
+```bash
+STASHCAST_WHISPER_LANGUAGE=pl
+```
+
+Left empty, the model works it out for itself. Whisper decides per request, so the
+language heard in the **first window is pinned for the whole episode** — otherwise it
+can hear Polish at the start and drift into English translation a minute later.
+
+Setting it explicitly is still better whenever you know the language: detection on a
+15-second window is not always right, and the whole episode then follows that one guess.
+
+The language actually in use is written to the download log and shown in the message
+after the admin action, so it is never a mystery.
 
 ## Creating a transcript
 
@@ -74,8 +95,44 @@ curl -s http://localhost:8000/feeds/audio.xml | grep podcast:transcript
 The tag carries the real MIME type of the file and the configured language, so a Polish
 transcript is announced as Polish rather than as English.
 
+## Per group
+
+Each group has a **Transcribe new downloads** checkbox, off by default. With it on,
+every episode downloaded into that group is sent for transcription once the download
+finishes. Existing items are not touched — use the actions for those.
+
+To catch up on what a group already holds, select it in admin → Groups and run:
+
+**Create transcript for all items in group**
+
+A transcription problem can never damage a download: the hook that starts it swallows
+its own errors, because the download task treats an exception at that point as a failed
+download and would re-fetch a file that was perfectly fine. A failed transcription
+leaves the episode `READY` and playable, with the reason recorded in **Transcript
+error**.
+
+## Following progress
+
+The **Transcript** column on the item list shows where each episode stands:
+
+| Column | Meaning |
+|---|---|
+| `⏳ waiting` | queued, not started |
+| `● transcribing` | being processed right now |
+| `152 words` | finished |
+| `failed` | failed — reason in the tooltip and on the item page |
+| `—` | never attempted |
+
+The **Transcript status** filter narrows the list to any one of those, which is how you
+see the queue and what is running. The text itself, and the failure reason, are on the
+item page under **Transcript**.
+
+Transcription state is deliberately separate from the download's `status` and
+`error_message`: an episode can download perfectly and still fail to transcribe, and
+conflating the two would make a good download look broken.
+
 ## Not yet
 
-Choosing transcription per group, and running it for a whole group through the paced
-queue, are not built yet — for now transcripts are created from the admin action on
-hand-picked items.
+Transcription does not go through the paced download queue — the actions hand work
+straight to the worker. If you transcribe a large back-catalogue at once, the Whisper
+machine sets the pace.
