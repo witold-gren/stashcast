@@ -1761,3 +1761,90 @@ class BatchDownloadFieldsTest(TestCase):
 
         source = inspect.getsource(tasks.process_media_batch.func)
         self.assertIn('apply_download_info', source)
+
+
+class SlugTransliterationTest(TestCase):
+    """Accented letters must be folded to ASCII, not dropped.
+
+    Stripping non-ASCII took pieces out of words: "Przestań być łatwym" became
+    "przesta-by-atwym", so directory names looked chopped off. ł is the awkward one -
+    it is a stroked letter with no canonical decomposition, so normalisation alone
+    leaves it behind to be stripped.
+    """
+
+    def test_polish_letters_are_folded(self):
+        from media.utils import transliterate
+
+        self.assertEqual(transliterate('ąćęłńóśźż'), 'acelnoszz')
+
+    def test_uppercase_too(self):
+        from media.utils import transliterate
+
+        self.assertEqual(transliterate('ĄĆĘŁŃÓŚŹŻ'), 'ACELNOSZZ')
+
+    def test_stroked_l_survives_as_l(self):
+        """The letter normalisation cannot handle on its own"""
+        from media.utils import transliterate
+
+        self.assertEqual(transliterate('łódź'), 'lodz')
+
+    def test_other_european_letters(self):
+        from media.utils import transliterate
+
+        self.assertEqual(transliterate('øæß'), 'oaess')
+
+    def test_plain_ascii_is_untouched(self):
+        from media.utils import transliterate
+
+        self.assertEqual(transliterate('already plain'), 'already plain')
+
+
+class SlugWordIntegrityTest(TestCase):
+    """Slugs must end on a whole word rather than a fragment"""
+
+    def test_polish_title_keeps_its_words(self):
+        from media.utils import generate_slug
+
+        self.assertEqual(
+            generate_slug('Przestań być łatwym celem: 7 błędów miłych ludzi'),
+            'przestan-byc-latwym-celem-7-bledow',
+        )
+
+    def test_no_half_word_at_the_end(self):
+        """Cutting the joined string at max_chars used to leave a fragment"""
+        from media.utils import generate_slug
+
+        slug = generate_slug('alpha bravo charlie delta echo foxtrot', max_chars=20)
+
+        self.assertLessEqual(len(slug), 20)
+        for word in slug.split('-'):
+            self.assertIn(word, ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'])
+
+    def test_word_limit_is_still_respected(self):
+        from media.utils import generate_slug
+
+        slug = generate_slug('one two three four five six seven eight', max_words=3)
+
+        self.assertEqual(slug, 'one-two-three')
+
+    def test_single_overlong_word_is_shortened(self):
+        """Better a clipped slug than none at all"""
+        from media.utils import generate_slug
+
+        slug = generate_slug('antidisestablishmentarianism', max_chars=10)
+
+        self.assertEqual(slug, 'antidisest')
+
+    def test_punctuation_only_title_falls_back(self):
+        from media.utils import generate_slug
+
+        self.assertEqual(generate_slug('!!! ???'), 'untitled')
+
+    def test_diacritics_no_longer_fragment_words(self):
+        """The regression this fixes, stated plainly"""
+        from media.utils import generate_slug
+
+        slug = generate_slug('Zażółć gęślą jaźń')
+
+        self.assertEqual(slug, 'zazolc-gesla-jazn')
+        self.assertNotIn('za-', slug)

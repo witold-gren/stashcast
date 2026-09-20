@@ -1,6 +1,62 @@
 import re
+import unicodedata
 from django.conf import settings
 from nanoid import generate
+
+
+# Letters that carry a stroke or are ligatures have no canonical decomposition, so
+# normalising them changes nothing and they would simply be dropped - turning "łatwym"
+# into "atwym" and leaving folder names looking truncated. Everything else (ą, ć, ę, ń,
+# ó, ś, ź, ż and their equivalents in other languages) is a base letter plus a combining
+# mark, which normalisation does handle.
+_TRANSLITERATIONS = {
+    'ł': 'l', 'Ł': 'L',
+    'ø': 'o', 'Ø': 'O',
+    'đ': 'd', 'Đ': 'D',
+    'ð': 'd', 'Ð': 'D',
+    'þ': 'th', 'Þ': 'Th',
+    'æ': 'ae', 'Æ': 'Ae',
+    'œ': 'oe', 'Œ': 'Oe',
+    'ß': 'ss',
+}
+
+
+def transliterate(text):
+    """
+    Fold accented letters down to plain ASCII.
+
+    ą -> a, ę -> e, ł -> l, ó -> o and so on, so that stripping non-ASCII afterwards
+    removes punctuation rather than pieces of words.
+
+    Args:
+        text: Any string
+
+    Returns:
+        str: The same text with accents and strokes removed.
+    """
+    replaced = ''.join(_TRANSLITERATIONS.get(char, char) for char in text)
+    decomposed = unicodedata.normalize('NFKD', replaced)
+    return ''.join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _join_within(words, max_chars):
+    """Join words with hyphens, stopping before the limit is exceeded.
+
+    Cutting the joined string at max_chars would leave a half word at the end, which is
+    what made folder names look chopped off.
+    """
+    slug = ''
+    for word in words:
+        candidate = f'{slug}-{word}' if slug else word
+        if len(candidate) > max_chars:
+            break
+        slug = candidate
+
+    # A single word longer than the whole budget still has to be shortened somehow
+    if not slug and words:
+        slug = words[0][:max_chars]
+
+    return slug
 
 
 def generate_slug(title, max_words=None, max_chars=None):
@@ -20,8 +76,9 @@ def generate_slug(title, max_words=None, max_chars=None):
     if max_chars is None:
         max_chars = settings.STASHCAST_SLUG_MAX_CHARS
 
-    # Convert to lowercase
-    slug = title.lower()
+    # Fold accents to ASCII first, so the filter below strips punctuation rather than
+    # the letters themselves
+    slug = transliterate(title).lower()
 
     # Replace non-alphanumeric characters with hyphens
     slug = re.sub(r'[^a-z0-9]+', '-', slug)
@@ -35,11 +92,8 @@ def generate_slug(title, max_words=None, max_chars=None):
     # Limit by max words
     words = words[:max_words]
 
-    # Join and truncate by max chars
-    slug = '-'.join(words)[:max_chars]
-
-    # Remove trailing hyphen if truncation created one
-    slug = slug.rstrip('-')
+    # Join without cutting a word in half
+    slug = _join_within(words, max_chars).rstrip('-')
 
     return slug or 'untitled'
 
