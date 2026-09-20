@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.utils.feedgenerator import Rss201rev2Feed
 
 from media.models import MediaGroup, MediaItem
+from media.service.media_info import get_mime_type
 from media.utils import build_group_image_url, build_media_url
 
 # Feed order: newest by the source platform's publication date. nulls_last is explicit
@@ -77,8 +78,11 @@ class StashcastRSSFeed(Rss201rev2Feed):
                 '',
                 {
                     'url': transcript,
-                    'type': 'text/vtt',
-                    'language': 'en',
+                    # Derived rather than hardcoded: the file is not always WebVTT, and
+                    # claiming the wrong type or language makes clients refuse to show
+                    # a transcript that is otherwise perfectly good.
+                    'type': item.get('transcript_type', 'text/vtt'),
+                    'language': item.get('transcript_language', 'en'),
                 },
             )
 
@@ -187,6 +191,10 @@ class BaseFeed(Feed):
         transcript_url = self._transcript_url(item)
         if transcript_url:
             extra['transcript'] = transcript_url
+            extra['transcript_type'] = get_mime_type(
+                item.transcript_path or item.subtitle_path
+            )
+            extra['transcript_language'] = settings.STASHCAST_SUBTITLE_LANGUAGE
         return extra
 
     def _media_content(self, item):
@@ -205,8 +213,13 @@ class BaseFeed(Feed):
         return build_media_url(item, item.thumbnail_path, absolute_builder=self.absolute_url)
 
     def _transcript_url(self, item):
-        """Return absolute transcript/subtitle URL for an item, if available."""
-        return build_media_url(item, item.subtitle_path, absolute_builder=self.absolute_url)
+        """Absolute URL of the item's transcript, if there is one.
+
+        A generated transcript wins over downloaded subtitles: it covers the whole
+        episode, while subtitles may be partial or in the wrong language.
+        """
+        path = item.transcript_path or item.subtitle_path
+        return build_media_url(item, path, absolute_builder=self.absolute_url)
 
     def item_title(self, item):
         return item.title

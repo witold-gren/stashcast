@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import F, Q
 from django.db.models.functions import Abs
@@ -299,6 +299,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'queue_position_display',
         # 'author',
         'duration_check_display',
+        'transcript_display',
         'publish_date_display',
         'file_size_display',
         'updated_at',
@@ -314,6 +315,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         ('publish_date', admin.EmptyFieldListFilter),
         'publish_date',
         DurationCheckFilter,
+        ('transcript', admin.EmptyFieldListFilter),
         'created_at',
         'downloaded_at',
     ]
@@ -393,6 +395,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'requeue_items',
         'refresh_publish_dates',
         'check_file_durations',
+        'create_transcripts',
         'repair_videos',
         'regenerate_summaries',
         'archive_items',
@@ -488,6 +491,49 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         )
 
     check_file_durations.short_description = 'Check file duration against source'
+
+    def create_transcripts(self, request, queryset):
+        """Send the selected media to the speech-to-text server."""
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to create transcripts.')
+        if not settings.STASHCAST_WHISPER_ENABLED:
+            self.message_user(
+                request,
+                'Speech to text is switched off. Set STASHCAST_WHISPER_ENABLED=true and '
+                'point STASHCAST_WHISPER_URI at your Wyoming server.',
+                level=messages.WARNING,
+            )
+            return
+        from media.tasks import transcribe_media
+
+        count = 0
+        for item in queryset.filter(status=MediaItem.STATUS_READY).exclude(content_path=''):
+            transcribe_media(item.guid)
+            count += 1
+
+        if not count:
+            self.message_user(request, 'No downloaded items selected.')
+            return
+        self.message_user(
+            request,
+            f'Transcribing {count} item(s) in the background against '
+            f'{settings.STASHCAST_WHISPER_URI}. Long recordings take a while - the '
+            f'Transcript column fills in as they finish.',
+        )
+
+    create_transcripts.short_description = 'Create transcript'
+
+    def transcript_display(self, obj):
+        """Whether the item has a transcript, and how long it is."""
+        if not obj.transcript:
+            return mark_safe('<span style="opacity: .4">&mdash;</span>')
+        return format_html(
+            '<span title="{} characters">{} words</span>',
+            len(obj.transcript),
+            len(obj.transcript.split()),
+        )
+
+    transcript_display.short_description = 'Transcript' 
 
     def publish_date_display(self, obj):
         """Publication date on the source platform, or a clear marker when unknown.

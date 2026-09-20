@@ -42,4 +42,9 @@ MIME_TYPES = {
     '.mkv': 'video/x-matroska',
     '.mov': 'video/quicktime',
     '.avi': 'video/x-msvideo',
+    # Transcript / subtitle formats, announced in the feed's <podcast:transcript> tag.
+    # Clients decide whether they can render a transcript from this value.
+    '.vtt': 'text/vtt',
+    '.srt': 'application/x-subrip',
+    '.txt': 'text/plain',
 }

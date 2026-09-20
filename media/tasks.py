@@ -891,6 +891,84 @@ def queue_items_for_download(guids):
     )
 
 
+def transcribe_item(item, logger=None):
+    """Produce a transcript for one item with the configured Wyoming server.
+
+    The text is stored on the record and a WebVTT file is written next to the media so
+    podcast clients that support transcripts can fetch it from the feed.
+
+    Args:
+        item: MediaItem to transcribe
+        logger: Optional callable(str) for progress logging
+
+    Returns:
+        int: Number of transcribed segments (0 when the audio held no speech).
+
+    Raises:
+        TranscriptionError: When the server or the audio cannot be used.
+    """
+    from media.service.transcribe import (
+        TranscriptionError,
+        segments_to_text,
+        segments_to_vtt,
+        transcribe_file,
+    )
+
+    def log(message):
+        if logger:
+            logger(message)
+
+    if not settings.STASHCAST_WHISPER_ENABLED:
+        raise TranscriptionError(
+            'Speech to text is switched off - set STASHCAST_WHISPER_ENABLED=true'
+        )
+
+    source = item.get_absolute_content_path()
+    if not source or not Path(source).exists():
+        raise TranscriptionError('No media file on disk to transcribe')
+
+    log(f'Transcribing {item.title or item.source_url}')
+    segments = transcribe_file(
+        source,
+        uri=settings.STASHCAST_WHISPER_URI,
+        language=settings.STASHCAST_WHISPER_LANGUAGE or None,
+        total_seconds=item.duration_seconds,
+        window_seconds=settings.STASHCAST_WHISPER_WINDOW_SECONDS,
+        timeout=settings.STASHCAST_WHISPER_TIMEOUT_SECONDS,
+        logger=logger,
+    )
+
+    text = segments_to_text(segments)
+    transcript_file = Path(source).parent / 'transcript.vtt'
+    transcript_file.write_text(segments_to_vtt(segments), encoding='utf-8')
+
+    item.transcript = text
+    item.transcript_path = transcript_file.name
+    item.transcript_created_at = timezone.now()
+    item.save(
+        update_fields=['transcript', 'transcript_path', 'transcript_created_at', 'updated_at']
+    )
+
+    log(f'  {len(segments)} segment(s), {len(text)} characters')
+    return len(segments)
+
+
+@db_task()
+def transcribe_media(guid):
+    """Background task: transcribe one item."""
+    try:
+        item = MediaItem.objects.get(guid=guid)
+    except MediaItem.DoesNotExist:
+        return
+
+    try:
+        transcribe_item(item)
+    except Exception as e:
+        # Record the reason on the item so the admin shows why nothing appeared
+        item.error_message = f'Transcription failed: {e}'
+        item.save(update_fields=['error_message', 'updated_at'])
+
+
 def record_download_duration(item, log_path=None):
     """Measure a freshly downloaded file and note how it compares with the source.
 

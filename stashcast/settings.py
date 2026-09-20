@@ -441,6 +441,39 @@ STASHCAST_DOWNLOAD_QUEUE_BATCH = int(os.environ.get('STASHCAST_DOWNLOAD_QUEUE_BA
 # 1 disables retrying.
 STASHCAST_DOWNLOAD_MAX_ATTEMPTS = int(os.environ.get('STASHCAST_DOWNLOAD_MAX_ATTEMPTS', '3'))
 
+# --- Speech to text (Wyoming / Whisper) ------------------------------------------
+# Transcripts are produced by a Wyoming protocol server you run yourself, such as
+# wyoming-whisper. Nothing is sent anywhere else. Podcast clients that support
+# transcripts (Apple Podcasts among them) pick the result up from the RSS feed.
+STASHCAST_WHISPER_ENABLED = os.environ.get('STASHCAST_WHISPER_ENABLED', '').lower() in (
+    'true',
+    '1',
+    'yes',
+)
+
+# Address of the Wyoming server: 'tcp://host:port', 'host:port' or 'host' (port 10300).
+STASHCAST_WHISPER_URI = os.environ.get('STASHCAST_WHISPER_URI', 'tcp://whisper:10300')
+
+# Language hint for the model. Defaults to the site language, which is what the
+# subtitle settings above already use. Empty lets the server detect it.
+STASHCAST_WHISPER_LANGUAGE = os.environ.get(
+    'STASHCAST_WHISPER_LANGUAGE', STASHCAST_SUBTITLE_LANGUAGE
+)
+
+# Whisper returns one block of text with no timings, so audio is sent in windows of this
+# many seconds and the window boundaries become the transcript's cue timings. Smaller
+# windows give finer timings and shorter requests; larger ones give the model more
+# surrounding context, which can help it at sentence boundaries. Anything below 5 is
+# raised to 5 by the transcriber.
+STASHCAST_WHISPER_WINDOW_SECONDS = int(
+    os.environ.get('STASHCAST_WHISPER_WINDOW_SECONDS', '15')
+)
+
+# Socket timeout for a single window, in seconds.
+STASHCAST_WHISPER_TIMEOUT_SECONDS = int(
+    os.environ.get('STASHCAST_WHISPER_TIMEOUT_SECONDS', '300')
+)
+
 # How far a downloaded file's real duration may differ from the duration reported by
 # the source before it is treated as incomplete. Containers round and encoders pad, so
 # a second or two is normal; a bigger gap means the download was cut short.

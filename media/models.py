@@ -199,6 +199,21 @@ class MediaItem(models.Model):
     content_path = models.CharField(max_length=500, blank=True)
     thumbnail_path = models.CharField(max_length=500, blank=True)
     subtitle_path = models.CharField(max_length=500, blank=True)
+
+    # Speech-to-text output. The text is kept on the record so it can be read and
+    # searched here; transcript_path points at the WebVTT file served to podcast
+    # clients. Separate from subtitle_path so generating a transcript never overwrites
+    # subtitles that came with the video.
+    transcript = models.TextField(
+        blank=True,
+        help_text='Transcript produced by the speech-to-text server.',
+    )
+    transcript_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text='WebVTT transcript file inside the item directory.',
+    )
+    transcript_created_at = models.DateTimeField(null=True, blank=True)
     file_size = models.BigIntegerField(null=True, blank=True)
     mime_type = models.CharField(max_length=100, blank=True)
 
@@ -298,6 +313,19 @@ class MediaItem(models.Model):
         if not base_dir:
             return None
         return base_dir / self.thumbnail_path
+
+    @property
+    def has_transcript(self):
+        return bool(self.transcript_path or self.transcript)
+
+    def get_absolute_transcript_path(self):
+        """Absolute path to the transcript file, or None when there is none."""
+        if not self.transcript_path:
+            return None
+        base_dir = self.get_base_dir()
+        if not base_dir:
+            return None
+        return base_dir / self.transcript_path
 
     def get_absolute_subtitle_path(self):
         """Get absolute path to subtitle file"""

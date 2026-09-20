@@ -409,6 +409,18 @@ See [docs/DOWNLOAD_QUEUE.md](docs/DOWNLOAD_QUEUE.md) for how the pacing and retr
 - `STASHCAST_STUCK_TIMEOUT_MINUTES`: Idle time after which an in-progress item is requeued (default: 30)
 - `STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS`: Heartbeat age at which the worker is reported down (default: 180)
 
+##### Transcripts (local Whisper)
+
+Episodes can be transcribed by a Wyoming protocol server you run yourself, and the result
+is offered to podcast clients through the feed. See
+[docs/TRANSCRIPTS.md](docs/TRANSCRIPTS.md).
+
+- `STASHCAST_WHISPER_ENABLED`: Turn transcription on (default: false)
+- `STASHCAST_WHISPER_URI`: Server address, e.g. `tcp://whisper:10300`
+- `STASHCAST_WHISPER_LANGUAGE`: Language hint (default: site language)
+- `STASHCAST_WHISPER_WINDOW_SECONDS`: Audio window length in seconds (default: 15)
+- `STASHCAST_WHISPER_TIMEOUT_SECONDS`: Timeout per window (default: 300)
+
 ##### Video playback on Apple Podcasts / iOS
 
 If a downloaded video fails with "Cannot play this episode on this device", see
