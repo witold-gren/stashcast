@@ -897,13 +897,21 @@ class FeedTimelineTest(TestCase):
 
 @override_settings(STASHCAST_TRANSCRIPT_HEADING='Transkrypcja')
 class TranscriptInDescriptionTest(TestCase):
-    """Merging the transcript into the description happens only in the published feed.
+    """Merging the transcript into the description is decided per group.
 
-    The database keeps description and transcript apart, and so does the admin - this is
-    purely a publishing choice, for apps that cannot use the WebVTT file.
+    It suits short episodes and ruins long ones, so it is a property of the group rather
+    than a global switch. The merge happens only while publishing: the database and the
+    admin keep description and transcript apart.
     """
 
-    def _item(self, **kwargs):
+    def _item(self, merge=False, grouped=True, **kwargs):
+        from media.models import MediaGroup
+
+        group = None
+        if grouped:
+            group = MediaGroup.objects.create(
+                name='Grupa', transcript_in_description=merge
+            )
         return MediaItem.objects.create(
             source_url='https://youtu.be/a',
             requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
@@ -914,6 +922,7 @@ class TranscriptInDescriptionTest(TestCase):
             content_path='content.m4a',
             file_size=10,
             description='Zwykly opis.',
+            group=group,
             downloaded_at=timezone.now(),
             **kwargs,
         )
@@ -927,15 +936,18 @@ class TranscriptInDescriptionTest(TestCase):
                 return item.findtext('description') or ''
         return ''
 
-    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=False)
-    def test_off_by_default_leaves_the_description_alone(self):
-        self._item(transcript='tekst transkrypcji')
+    def test_group_flag_is_off_by_default(self):
+        from media.models import MediaGroup
+
+        self.assertFalse(MediaGroup.objects.create(name='Nowa').transcript_in_description)
+
+    def test_group_with_the_flag_off_keeps_the_plain_description(self):
+        self._item(merge=False, transcript='tekst transkrypcji')
 
         self.assertEqual(self._item_description(), 'Zwykly opis.')
 
-    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
-    def test_merged_only_when_switched_on(self):
-        self._item(transcript='tekst transkrypcji')
+    def test_group_with_the_flag_on_gets_the_merged_description(self):
+        self._item(merge=True, transcript='tekst transkrypcji')
 
         description = self._item_description()
 
@@ -943,10 +955,15 @@ class TranscriptInDescriptionTest(TestCase):
         self.assertIn('tekst transkrypcji', description)
         self.assertIn('Transkrypcja', description)
 
-    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
-    def test_stored_description_is_never_modified(self):
+    def test_item_without_a_group_is_never_merged(self):
+        """There is no group to ask, so the safe answer is no"""
+        self._item(grouped=False, transcript='tekst transkrypcji')
+
+        self.assertEqual(self._item_description(), 'Zwykly opis.')
+
+    def test_stored_fields_are_never_modified(self):
         """The merge is a publishing step, not an edit"""
-        item = self._item(transcript='tekst transkrypcji')
+        item = self._item(merge=True, transcript='tekst transkrypcji')
 
         self._item_description()
 
@@ -954,49 +971,38 @@ class TranscriptInDescriptionTest(TestCase):
         self.assertEqual(item.description, 'Zwykly opis.')
         self.assertEqual(item.transcript, 'tekst transkrypcji')
 
-    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
-    def test_vtt_tag_is_still_published(self):
-        """Apps that understand the tag must keep the timed version"""
-        self._item(transcript='tekst', transcript_path='transcript.vtt')
+    def test_vtt_tag_is_published_regardless_of_the_flag(self):
+        """Apps that understand the tag must keep the timed version either way"""
+        self._item(merge=False, transcript='tekst', transcript_path='transcript.vtt')
 
         xml = Client().get('/feeds/audio.xml').content.decode()
 
         self.assertIn('podcast:transcript', xml)
         self.assertIn('transcript.vtt', xml)
 
-    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
     def test_window_lines_are_joined_into_running_text(self):
         """Stored transcripts hold one line per audio window, which reads as a column"""
-        self._item(transcript='pierwsze zdanie\ndrugie zdanie\ntrzecie')
+        self._item(merge=True, transcript='pierwsze zdanie\ndrugie zdanie\ntrzecie')
 
-        description = self._item_description()
+        self.assertIn('pierwsze zdanie drugie zdanie trzecie', self._item_description())
 
-        self.assertIn('pierwsze zdanie drugie zdanie trzecie', description)
-
-    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
     def test_item_without_a_transcript_is_unchanged(self):
-        self._item()
+        self._item(merge=True)
 
         self.assertEqual(self._item_description(), 'Zwykly opis.')
 
-    @override_settings(
-        STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True,
-        STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS=20,
-    )
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS=20)
     def test_limit_trims_on_a_word_boundary(self):
         """A full transcript in every item can add megabytes to the feed"""
-        self._item(transcript='jedno dwa trzy cztery piec szesc siedem osiem')
+        self._item(merge=True, transcript='jedno dwa trzy cztery piec szesc siedem osiem')
 
         description = self._item_description()
 
         self.assertIn('…', description)
         self.assertNotIn('siedem', description)
 
-    @override_settings(
-        STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True,
-        STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS=0,
-    )
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS=0)
     def test_zero_means_no_limit(self):
-        self._item(transcript='jedno dwa trzy cztery piec szesc siedem osiem')
+        self._item(merge=True, transcript='jedno dwa trzy cztery piec szesc siedem osiem')
 
         self.assertIn('osiem', self._item_description())

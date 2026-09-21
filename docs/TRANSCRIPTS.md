@@ -111,6 +111,47 @@ download and would re-fetch a file that was perfectly fine. A failed transcripti
 leaves the episode `READY` and playable, with the reason recorded in **Transcript
 error**.
 
+## Publishing the transcript inside the description
+
+Apple Podcasts will not show a transcript from a private feed (see *Where transcripts
+can be read* below). The way around it is to publish the text inside the episode
+description, where every app shows it.
+
+That is a checkbox on the group — **Publish transcript in description** — because it
+depends entirely on episode length: on a 6-minute episode the description reads nicely,
+on a 60-minute one it becomes a wall of text. Off by default.
+
+The result looks like this in the feed:
+
+```
+Zwykły opis odcinka.
+
+────────────────────
+Transkrypcja
+────────────────────
+
+pierwsze zdanie drugie zdanie trzecie zdanie…
+```
+
+The `<podcast:transcript>` tag still points at the WebVTT file, so apps that understand
+it keep the timed version. Only the description gains a copy, as running text — the
+stored transcript keeps one line per audio window, which would read as a column of
+fragments.
+
+Nothing is written to the database: description and transcript stay separate fields, and
+separate sections in the admin. The merge happens while the feed is generated.
+
+Two settings control the formatting for every group that has the box ticked:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `STASHCAST_TRANSCRIPT_HEADING` | `Transcript` | Heading above the text |
+| `STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS` | `0` | Cap in characters, 0 = no limit |
+
+A full transcript is roughly 1 KB per minute of audio. On a library of 85 episodes that
+adds about 2 MB to a feed that is downloaded on every refresh, so on a large group the
+cap is worth setting.
+
 ## Following progress
 
 The **Transcript** column on the item list shows where each episode stands:
@@ -130,6 +171,18 @@ item page under **Transcript**.
 Transcription state is deliberately separate from the download's `status` and
 `error_message`: an episode can download perfectly and still fail to transcribe, and
 conflating the two would make a good download look broken.
+
+## Where transcripts can be read
+
+Apple Podcasts will not display these transcripts. Its own documentation states that
+transcripts are not shown for episodes outside the Apple Podcasts catalog, and that
+private RSS feeds are not processed at all — so there is no way to switch on "Display
+transcripts I provide" for a self-hosted feed. Polish is also absent from the languages
+Apple accepts for transcripts.
+
+Apps that do read `<podcast:transcript>` from the feed include Player FM, Podcast
+Addict, Metacast, Fountain and Goodpods. For Apple Podcasts, use the description option
+above instead.
 
 ## Not yet
 

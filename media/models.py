@@ -52,6 +52,16 @@ class MediaGroup(models.Model):
         (DOWNLOAD_TYPE_VIDEO, _('Video')),
     ]
 
+    transcript_in_description = models.BooleanField(
+        default=False,
+        help_text=(
+            'Also publish the transcript inside each episode description, as plain text '
+            'without cue timings. For apps that ignore the transcript file - Apple '
+            'Podcasts among them. Worth it for short episodes; a 60 minute one turns '
+            'the description into a wall of text.'
+        ),
+    )
+
     transcribe_new_downloads = models.BooleanField(
         default=False,
         help_text=(

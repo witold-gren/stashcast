@@ -155,7 +155,7 @@ class BaseFeed(Feed):
 
     def get_queryset(self, obj=None):
         """Base queryset for feed items; subclasses can further filter."""
-        return MediaItem.objects.filter(status=MediaItem.STATUS_READY)
+        return MediaItem.objects.select_related('group').filter(status=MediaItem.STATUS_READY)
 
     def feed_extra_kwargs(self, obj):
         extra = super().feed_extra_kwargs(obj) or {}
@@ -273,7 +273,10 @@ class BaseFeed(Feed):
         fragments. Joining them back into prose is what makes this readable in a podcast
         app - the timings stay in the WebVTT file for apps that can use them.
         """
-        if not settings.STASHCAST_TRANSCRIPT_IN_DESCRIPTION or not item.transcript:
+        if not item.transcript:
+            return ''
+        # Per group rather than global: it suits short episodes and ruins long ones
+        if not item.group or not item.group.transcript_in_description:
             return ''
 
         text = ' '.join(item.transcript.split())
@@ -323,7 +326,7 @@ class AudioFeed(BaseFeed):
         return self.get_queryset().order_by(*_PUBLISH_ORDER)[:100]
 
     def get_queryset(self, obj=None):
-        return MediaItem.objects.filter(
+        return MediaItem.objects.select_related('group').filter(
             media_type=MediaItem.MEDIA_TYPE_AUDIO, status=MediaItem.STATUS_READY
         )
 
@@ -340,7 +343,7 @@ class VideoFeed(BaseFeed):
         return self.get_queryset().order_by(*_PUBLISH_ORDER)[:100]
 
     def get_queryset(self, obj=None):
-        return MediaItem.objects.filter(
+        return MediaItem.objects.select_related('group').filter(
             media_type=MediaItem.MEDIA_TYPE_VIDEO, status=MediaItem.STATUS_READY
         )
 

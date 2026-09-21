@@ -478,13 +478,9 @@ STASHCAST_WHISPER_TIMEOUT_SECONDS = int(
     os.environ.get('STASHCAST_WHISPER_TIMEOUT_SECONDS', '300')
 )
 
-# Also append the transcript to the episode description, as plain running text without
-# the cue timings. The <podcast:transcript> tag keeps pointing at the WebVTT file, so
-# apps that understand it are unaffected - this is for the ones that do not, Apple
-# Podcasts among them, where the description is the only place a transcript can show up.
-STASHCAST_TRANSCRIPT_IN_DESCRIPTION = os.environ.get(
-    'STASHCAST_TRANSCRIPT_IN_DESCRIPTION', ''
-).lower() in ('true', '1', 'yes')
+# Whether a transcript is merged into the episode description is decided per group
+# (MediaGroup.transcript_in_description), because it suits short episodes and ruins long
+# ones. The settings below only control how it looks when a group asks for it.
 
 # Heading placed above the transcript in the description.
 STASHCAST_TRANSCRIPT_HEADING = os.environ.get('STASHCAST_TRANSCRIPT_HEADING', 'Transcript')
