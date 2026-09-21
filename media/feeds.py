@@ -255,9 +255,32 @@ class BaseFeed(Feed):
         return item.title
 
     def item_description(self, item):
-        if item.summary:
-            return f'{item.summary}\n\n{item.description}'
-        return item.description
+        parts = [part for part in (item.summary, item.description) if part]
+        body = '\n\n'.join(parts)
+
+        transcript = self._description_transcript(item)
+        if transcript:
+            separator = '─' * 20
+            heading = settings.STASHCAST_TRANSCRIPT_HEADING
+            body = f'{body}\n\n{separator}\n{heading}\n{separator}\n\n{transcript}'
+
+        return body
+
+    def _description_transcript(self, item):
+        """The transcript as running text, for appending to the description.
+
+        Stored transcripts carry one line per audio window, which reads as a column of
+        fragments. Joining them back into prose is what makes this readable in a podcast
+        app - the timings stay in the WebVTT file for apps that can use them.
+        """
+        if not settings.STASHCAST_TRANSCRIPT_IN_DESCRIPTION or not item.transcript:
+            return ''
+
+        text = ' '.join(item.transcript.split())
+        limit = settings.STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS
+        if limit and len(text) > limit:
+            text = text[:limit].rsplit(' ', 1)[0] + '…'
+        return text
 
     def item_link(self, item):
         return self.absolute_url(f'/admin/tools/item/{item.guid}/')

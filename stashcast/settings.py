@@ -478,6 +478,24 @@ STASHCAST_WHISPER_TIMEOUT_SECONDS = int(
     os.environ.get('STASHCAST_WHISPER_TIMEOUT_SECONDS', '300')
 )
 
+# Also append the transcript to the episode description, as plain running text without
+# the cue timings. The <podcast:transcript> tag keeps pointing at the WebVTT file, so
+# apps that understand it are unaffected - this is for the ones that do not, Apple
+# Podcasts among them, where the description is the only place a transcript can show up.
+STASHCAST_TRANSCRIPT_IN_DESCRIPTION = os.environ.get(
+    'STASHCAST_TRANSCRIPT_IN_DESCRIPTION', ''
+).lower() in ('true', '1', 'yes')
+
+# Heading placed above the transcript in the description.
+STASHCAST_TRANSCRIPT_HEADING = os.environ.get('STASHCAST_TRANSCRIPT_HEADING', 'Transcript')
+
+# Cap on how much transcript goes into the description, in characters. 0 = no limit.
+# Worth setting on a large library: a full transcript can add tens of kilobytes to every
+# single episode, and the whole feed is downloaded on every refresh.
+STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS = int(
+    os.environ.get('STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS', '0')
+)
+
 # How far a downloaded file's real duration may differ from the duration reported by
 # the source before it is treated as incomplete. Containers round and encoders pad, so
 # a second or two is normal; a bigger gap means the download was cut short.

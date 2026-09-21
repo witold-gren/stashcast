@@ -893,3 +893,110 @@ class FeedTimelineTest(TestCase):
         self._item(duration_seconds=60, subtitle_path='subtitles.vtt')
 
         self.assertIn('language="en"', self._feed())
+
+
+@override_settings(STASHCAST_TRANSCRIPT_HEADING='Transkrypcja')
+class TranscriptInDescriptionTest(TestCase):
+    """Merging the transcript into the description happens only in the published feed.
+
+    The database keeps description and transcript apart, and so does the admin - this is
+    purely a publishing choice, for apps that cannot use the WebVTT file.
+    """
+
+    def _item(self, **kwargs):
+        return MediaItem.objects.create(
+            source_url='https://youtu.be/a',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            media_type=MediaItem.MEDIA_TYPE_AUDIO,
+            slug='odcinek',
+            title='Odcinek',
+            status=MediaItem.STATUS_READY,
+            content_path='content.m4a',
+            file_size=10,
+            description='Zwykly opis.',
+            downloaded_at=timezone.now(),
+            **kwargs,
+        )
+
+    def _item_description(self):
+        import xml.etree.ElementTree as ET
+
+        xml = Client().get('/feeds/audio.xml').content.decode()
+        for item in ET.fromstring(xml).find('channel').findall('item'):
+            if item.findtext('title') == 'Odcinek':
+                return item.findtext('description') or ''
+        return ''
+
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=False)
+    def test_off_by_default_leaves_the_description_alone(self):
+        self._item(transcript='tekst transkrypcji')
+
+        self.assertEqual(self._item_description(), 'Zwykly opis.')
+
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
+    def test_merged_only_when_switched_on(self):
+        self._item(transcript='tekst transkrypcji')
+
+        description = self._item_description()
+
+        self.assertIn('Zwykly opis.', description)
+        self.assertIn('tekst transkrypcji', description)
+        self.assertIn('Transkrypcja', description)
+
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
+    def test_stored_description_is_never_modified(self):
+        """The merge is a publishing step, not an edit"""
+        item = self._item(transcript='tekst transkrypcji')
+
+        self._item_description()
+
+        item.refresh_from_db()
+        self.assertEqual(item.description, 'Zwykly opis.')
+        self.assertEqual(item.transcript, 'tekst transkrypcji')
+
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
+    def test_vtt_tag_is_still_published(self):
+        """Apps that understand the tag must keep the timed version"""
+        self._item(transcript='tekst', transcript_path='transcript.vtt')
+
+        xml = Client().get('/feeds/audio.xml').content.decode()
+
+        self.assertIn('podcast:transcript', xml)
+        self.assertIn('transcript.vtt', xml)
+
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
+    def test_window_lines_are_joined_into_running_text(self):
+        """Stored transcripts hold one line per audio window, which reads as a column"""
+        self._item(transcript='pierwsze zdanie\ndrugie zdanie\ntrzecie')
+
+        description = self._item_description()
+
+        self.assertIn('pierwsze zdanie drugie zdanie trzecie', description)
+
+    @override_settings(STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True)
+    def test_item_without_a_transcript_is_unchanged(self):
+        self._item()
+
+        self.assertEqual(self._item_description(), 'Zwykly opis.')
+
+    @override_settings(
+        STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True,
+        STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS=20,
+    )
+    def test_limit_trims_on_a_word_boundary(self):
+        """A full transcript in every item can add megabytes to the feed"""
+        self._item(transcript='jedno dwa trzy cztery piec szesc siedem osiem')
+
+        description = self._item_description()
+
+        self.assertIn('…', description)
+        self.assertNotIn('siedem', description)
+
+    @override_settings(
+        STASHCAST_TRANSCRIPT_IN_DESCRIPTION=True,
+        STASHCAST_TRANSCRIPT_IN_DESCRIPTION_MAX_CHARS=0,
+    )
+    def test_zero_means_no_limit(self):
+        self._item(transcript='jedno dwa trzy cztery piec szesc siedem osiem')
+
+        self.assertIn('osiem', self._item_description())
