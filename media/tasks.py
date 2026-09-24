@@ -1,5 +1,6 @@
 import os
 import shutil
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -9,7 +10,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from huey import crontab, signals
-from huey.contrib.djhuey import db_periodic_task, db_task, signal
+from huey.contrib.djhuey import db_periodic_task, db_task, on_startup, signal
 
 from media.models import MediaItem
 from media.processing import (
@@ -126,6 +127,14 @@ def schedule_retry_or_fail(item, reason):
     return True
 
 
+# Huey dequeues higher priorities first. Someone is waiting for a download; a
+# transcription is background work that holds a thread for tens of minutes per episode.
+# Without this ordering a single "transcribe the whole group" action puts hundreds of
+# long tasks in front of the next download, and nothing downloads for hours.
+PRIORITY_DOWNLOAD = 10
+PRIORITY_TRANSCRIPTION = 0
+
+
 _heartbeat_state = {'last': 0.0}
 
 
@@ -151,14 +160,96 @@ def touch_heartbeat(interval_seconds=10):
 
 @signal(signals.SIGNAL_EXECUTING, signals.SIGNAL_COMPLETE, signals.SIGNAL_ERROR)
 def _heartbeat_on_activity(signal_name, task, exc=None):
-    """Refresh the heartbeat whenever the worker does anything at all.
+    """Refresh the heartbeat as tasks start and finish.
 
-    The periodic task below cannot be relied on by itself: it queues behind everything
-    else, so a worker with a backlog - which is a worker that is very much alive - stops
-    refreshing the heartbeat and the application declares itself dead. Signals fire on
-    the worker thread as each task runs, so a busy worker keeps proving it is working.
+    A backstop for the thread below: if that thread ever dies, a worker still chewing
+    through tasks keeps proving it is alive.
     """
     touch_heartbeat()
+
+
+_heartbeat_thread = None
+_heartbeat_thread_lock = threading.Lock()
+
+
+def start_heartbeat_thread(interval_seconds=None):
+    """Refresh the heartbeat from a thread of its own, for as long as the process lives.
+
+    Liveness cannot be reported from the queue. A heartbeat task queues behind everything
+    else, so it is never reached exactly when it matters most - and task signals only
+    fire at task boundaries, so a worker whose every thread sits inside one long
+    transcription emits nothing for tens of minutes. Both make a working worker look
+    dead, and downloads were failed on sight because of it.
+
+    A thread of its own is not subject to either: it answers "is this process running",
+    which is the question being asked.
+
+    Args:
+        interval_seconds: Gap between writes; defaults to a third of the staleness limit
+
+    Returns:
+        threading.Thread: The running heartbeat thread.
+    """
+    global _heartbeat_thread
+
+    if interval_seconds is None:
+        interval_seconds = max(5, settings.STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS // 3)
+
+    with _heartbeat_thread_lock:
+        # on_startup runs once per worker thread; only the first one starts the beat
+        if _heartbeat_thread is not None and _heartbeat_thread.is_alive():
+            return _heartbeat_thread
+
+        def beat():
+            while True:
+                touch_heartbeat(interval_seconds=0)
+                time.sleep(interval_seconds)
+
+        _heartbeat_thread = threading.Thread(
+            target=beat, name='stashcast-heartbeat', daemon=True
+        )
+        _heartbeat_thread.start()
+        return _heartbeat_thread
+
+
+@on_startup()
+def _worker_started():
+    """Prepare the worker process: start the heartbeat and clear interrupted work."""
+    start_heartbeat_thread()
+    try:
+        release_interrupted_transcriptions()
+    except Exception:
+        # Tidying up after the last run must never stop this one from starting
+        pass
+
+
+_startup_cleanup_done = False
+
+
+def release_interrupted_transcriptions():
+    """Clear transcriptions left marked as running by a worker that went away.
+
+    Nothing survives a restart, so anything still RUNNING when the process boots was
+    interrupted. Left alone it stays "Transcribing" forever: the admin reports work in
+    progress that nobody is doing, and the item can never be queued again.
+
+    Returns:
+        int: How many items were released.
+    """
+    global _startup_cleanup_done
+
+    with _heartbeat_thread_lock:
+        # Another worker thread may already have started a transcription of its own by
+        # the time this runs, and clearing that one would be a lie in the other direction
+        if _startup_cleanup_done:
+            return 0
+        _startup_cleanup_done = True
+
+    return MediaItem.objects.filter(transcript_status=MediaItem.TRANSCRIPT_RUNNING).update(
+        transcript_status=MediaItem.TRANSCRIPT_FAILED,
+        transcript_error='Interrupted by a worker restart - run the transcription again',
+        updated_at=timezone.now(),
+    )
 
 
 def heartbeat_path():
@@ -300,7 +391,7 @@ def retry_failed_items(logger=None):
     return requeued
 
 
-@db_task()
+@db_task(priority=PRIORITY_DOWNLOAD)
 def process_media(guid):
     """
     Main processing task for media download and conversion.
@@ -570,7 +661,7 @@ def generate_summary(guid):
             write_log(log_path, f'Summary generation failed: {str(e)}')
 
 
-@db_task()
+@db_task(priority=PRIORITY_DOWNLOAD)
 def process_media_batch(guids: List[str]):
     """
     Batch processing task for multiple media downloads.
@@ -1117,7 +1208,7 @@ def queue_transcription(items):
     return count
 
 
-@db_task()
+@db_task(priority=PRIORITY_TRANSCRIPTION)
 def transcribe_media(guid):
     """Background task: transcribe one item.
 
@@ -1519,17 +1610,7 @@ def _download_queue_crontab():
     return crontab(minute=f'*/{minutes}')
 
 
-@db_periodic_task(crontab(minute='*'))
-def worker_heartbeat():
-    """Refresh the heartbeat while the worker is idle.
-
-    A busy worker is covered by the signal handler above; this is for the quiet periods
-    when no tasks are running at all.
-    """
-    touch_heartbeat(interval_seconds=0)
-
-
-@db_periodic_task(_download_queue_crontab())
+@db_periodic_task(_download_queue_crontab(), priority=PRIORITY_DOWNLOAD)
 def process_download_queue():
     """
     Periodic task: release a small batch of queued downloads.

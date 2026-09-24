@@ -312,18 +312,18 @@ being enqueued, that check also fired on a **healthy but busy** queue — which 
 adding a channel produced a burst of "Huey worker may not be running" errors on
 downloads that were merely waiting their turn.
 
-Liveness is now reported by a heartbeat file (`<STASHCAST_DATA_DIR>/worker-heartbeat`).
-It is refreshed from two places, and it needs both:
+Liveness is reported by a heartbeat file (`<STASHCAST_DATA_DIR>/worker-heartbeat`),
+refreshed by **a thread of its own** in the worker process, plus a backstop on every task
+the worker starts, finishes or fails.
 
-- **on every task the worker starts, finishes or fails**, throttled to one write per ten
-  seconds. This is what proves a *busy* worker is alive.
-- **by a periodic task once a minute**, for a worker that is idle and therefore emitting
-  no signals at all.
+It cannot be a queued task. A heartbeat task queues behind everything else, so it is not
+reached exactly when it matters most: on a saturated worker 116 of them piled up unrun
+while the file went stale, the application declared a working worker dead, and every new
+download failed on sight with *"Worker unavailable ..."*. Task signals are not enough
+either — they only fire at task boundaries, so a worker whose every thread sits inside
+one long transcription says nothing for tens of minutes.
 
-The periodic task alone is not enough: periodic tasks queue behind everything else, so a
-worker with a long backlog — a worker that is very much alive — stopped refreshing the
-file, the application declared it dead, and every new download failed on sight with
-*"Worker unavailable ... waiting 0 seconds"*.
+A thread answers the question actually being asked: *is this process running?*
 
 The status stream also requires the item to have genuinely waited longer than
 `STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS` before reporting the worker as down. A
@@ -344,3 +344,12 @@ something long. Transcribing an hour-long episode holds a thread for as long as 
 takes, so with the default two threads a pair of transcriptions leaves nothing to
 download with. `STASHCAST_WORKER_COUNT` raises the ceiling — bearing in mind that each
 extra thread is another concurrent request to the speech-to-text server.
+
+Downloads are enqueued at a higher priority than transcription, so a queue full of
+background work does not decide when the next download happens. Priority orders the
+queue; it does not interrupt a task already running, so a transcription that has started
+keeps its thread until it finishes.
+
+A restart leaves no transcription running. Anything still marked *Transcribing* when the
+worker boots is released as failed, so it can be queued again rather than sitting in a
+state nobody is working on.

@@ -10,6 +10,7 @@ manual immediate re-fetch produced a correct one.
 """
 
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
@@ -268,6 +269,12 @@ class HeartbeatSurvivesABusyWorkerTest(TestCase):
         _heartbeat_state['last'] = 0.0
         self.addCleanup(lambda: self.path.exists() and self.path.unlink())
 
+    def _stop_thread(self):
+        """Let the next test start a beat of its own."""
+        import media.tasks as tasks
+
+        tasks._heartbeat_thread = None
+
     def test_task_activity_refreshes_the_heartbeat(self):
         from media.tasks import _heartbeat_on_activity, worker_is_alive
 
@@ -290,14 +297,46 @@ class HeartbeatSurvivesABusyWorkerTest(TestCase):
         self.assertEqual(self.path.stat().st_mtime, first)
         self.assertEqual(_heartbeat_state['last'], before)
 
-    def test_periodic_task_refreshes_even_when_throttled(self):
-        """The idle-worker path must not be blocked by the throttle"""
-        from media.tasks import touch_heartbeat, worker_heartbeat, worker_is_alive
+    def test_the_heartbeat_thread_refreshes_even_when_throttled(self):
+        """The thread must not be blocked by the throttle meant for signals"""
+        import time
+
+        from media.tasks import start_heartbeat_thread, touch_heartbeat, worker_is_alive
 
         touch_heartbeat()
         self.path.unlink()
 
-        worker_heartbeat.call_local()
+        thread = start_heartbeat_thread(interval_seconds=60)
+        self.addCleanup(self._stop_thread)
+        for _ in range(50):
+            if self.path.exists():
+                break
+            time.sleep(0.02)
+
+        self.assertTrue(thread.is_alive())
+        self.assertTrue(worker_is_alive())
+
+    def test_a_second_start_does_not_add_another_thread(self):
+        """on_startup fires once per worker thread; one beat is enough"""
+        from media.tasks import start_heartbeat_thread
+
+        first = start_heartbeat_thread(interval_seconds=60)
+        self.addCleanup(self._stop_thread)
+
+        self.assertIs(start_heartbeat_thread(interval_seconds=60), first)
+
+    def test_the_thread_keeps_beating_while_every_worker_is_busy(self):
+        """The reported failure: both threads inside a long transcription for 27 minutes,
+        no task ever starts or finishes, and the signal backstop therefore says nothing"""
+        import time
+
+        from media.tasks import start_heartbeat_thread, worker_is_alive
+
+        start_heartbeat_thread(interval_seconds=0.01)
+        self.addCleanup(self._stop_thread)
+        time.sleep(0.05)
+        self.path.unlink()  # as if the last write had aged out
+        time.sleep(0.05)
 
         self.assertTrue(worker_is_alive())
 
@@ -372,3 +411,113 @@ class WorkerUnavailableGraceTest(TestCase):
 
         item.refresh_from_db()
         self.assertEqual(item.status, MediaItem.STATUS_PREFETCHING)
+
+
+class InterruptedTranscriptionsTest(TestCase):
+    """A restart leaves nothing running, so nothing may still claim to be running"""
+
+    def setUp(self):
+        import media.tasks as tasks
+
+        tasks._startup_cleanup_done = False
+        self.addCleanup(setattr, tasks, '_startup_cleanup_done', False)
+
+    def _item(self, slug, transcript_status):
+        return MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            status=MediaItem.STATUS_READY,
+            transcript_status=transcript_status,
+        )
+
+    def test_running_items_are_released(self):
+        """Otherwise the admin shows "Transcribing" forever and the item can never requeue"""
+        from media.tasks import release_interrupted_transcriptions
+
+        item = self._item('przerwany', MediaItem.TRANSCRIPT_RUNNING)
+
+        self.assertEqual(release_interrupted_transcriptions(), 1)
+
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, MediaItem.TRANSCRIPT_FAILED)
+        self.assertIn('worker restart', item.transcript_error)
+        self.assertFalse(item.is_transcribing)
+
+    def test_finished_and_waiting_items_are_left_alone(self):
+        from media.tasks import release_interrupted_transcriptions
+
+        done = self._item('gotowy', MediaItem.TRANSCRIPT_DONE)
+        waiting = self._item('czeka', MediaItem.TRANSCRIPT_QUEUED)
+
+        release_interrupted_transcriptions()
+
+        done.refresh_from_db()
+        waiting.refresh_from_db()
+        self.assertEqual(done.transcript_status, MediaItem.TRANSCRIPT_DONE)
+        self.assertEqual(waiting.transcript_status, MediaItem.TRANSCRIPT_QUEUED)
+
+    def test_it_only_runs_once_per_process(self):
+        """Every worker thread calls it, but by then one of them may really be running"""
+        from media.tasks import release_interrupted_transcriptions
+
+        release_interrupted_transcriptions()
+        started_since = self._item('juz-dziala', MediaItem.TRANSCRIPT_RUNNING)
+
+        self.assertEqual(release_interrupted_transcriptions(), 0)
+
+        started_since.refresh_from_db()
+        self.assertEqual(started_since.transcript_status, MediaItem.TRANSCRIPT_RUNNING)
+
+
+class TaskPriorityTest(TestCase):
+    """Downloads must not queue behind hours of background transcription"""
+
+    def _priority(self, task):
+        return task.settings['default_priority']
+
+    def test_downloads_outrank_transcription(self):
+        from media.tasks import process_media, process_media_batch, transcribe_media
+
+        self.assertGreater(self._priority(process_media), self._priority(transcribe_media))
+        self.assertGreater(self._priority(process_media_batch), self._priority(transcribe_media))
+
+    def test_the_queue_release_outranks_transcription_too(self):
+        """It is the task that lets queued downloads through at all"""
+        from media.tasks import process_download_queue, transcribe_media
+
+        self.assertGreater(self._priority(process_download_queue), self._priority(transcribe_media))
+
+    def test_a_download_is_dequeued_ahead_of_a_waiting_transcription(self):
+        """The numbers only matter if the queue really reorders on them.
+
+        The reported state was 28 transcriptions and 13 downloads in one queue, with both
+        worker threads busy; whichever is handed out first decides whether anything the
+        user is waiting for happens today.
+        """
+        import tempfile
+
+        from huey import SqliteHuey
+
+        from media.tasks import PRIORITY_DOWNLOAD, PRIORITY_TRANSCRIPTION
+
+        # A file, not ':memory:': huey opens a connection per thread, and each one would
+        # get a database of its own
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        queue = SqliteHuey(filename=str(Path(directory.name) / 'queue.db'), immediate=False)
+
+        @queue.task(priority=PRIORITY_TRANSCRIPTION)
+        def slow_background_work():
+            pass
+
+        @queue.task(priority=PRIORITY_DOWNLOAD)
+        def what_someone_is_waiting_for():
+            pass
+
+        for _ in range(5):
+            slow_background_work()
+        what_someone_is_waiting_for()
+
+        self.assertEqual(queue.dequeue().name, 'what_someone_is_waiting_for')
