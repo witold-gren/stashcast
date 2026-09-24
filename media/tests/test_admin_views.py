@@ -847,3 +847,62 @@ class RequeueGuardTest(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.status, MediaItem.STATUS_QUEUED)
         self.assertEqual(item.download_attempts, 0)
+
+
+class QueueRemovalActionTest(TestCase):
+    """The admin actions for freeing up the two queues"""
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_superuser('qr', 'qr@test.com', 'password')
+        self.client.login(username='qr', password='password')
+
+    def _item(self, slug, **kwargs):
+        return MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            media_type=MediaItem.MEDIA_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            content_path='content.m4a',
+            **kwargs,
+        )
+
+    def _run(self, action, *items):
+        return self.client.post(
+            '/admin/media/mediaitem/',
+            {'action': action, '_selected_action': [i.guid for i in items]},
+            follow=True,
+        )
+
+    def test_removes_waiting_items_from_the_transcription_queue(self):
+        item = self._item('a', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+
+        response = self._run('remove_from_transcription_queue', item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, '')
+        self.assertContains(response, 'Removed 1 item(s) from the transcription queue')
+
+    def test_says_when_something_is_already_being_transcribed(self):
+        item = self._item('a', transcript_status=MediaItem.TRANSCRIPT_RUNNING)
+
+        response = self._run('remove_from_transcription_queue', item)
+
+        self.assertContains(response, 'left to finish')
+
+    def test_removes_waiting_items_from_the_download_queue(self):
+        item = self._item('a', status=MediaItem.STATUS_QUEUED)
+
+        response = self._run('remove_from_download_queue', item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_ERROR)
+        self.assertContains(response, 'Removed 1 item(s) from the download queue')
+
+    def test_says_when_nothing_was_queued(self):
+        item = self._item('a', status=MediaItem.STATUS_READY)
+
+        response = self._run('remove_from_download_queue', item)
+
+        self.assertContains(response, 'None of the selected items was waiting to download')

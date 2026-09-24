@@ -450,6 +450,8 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'refresh_publish_dates',
         'check_file_durations',
         'create_transcripts',
+        'remove_from_transcription_queue',
+        'remove_from_download_queue',
         'repair_videos',
         'regenerate_summaries',
         'archive_items',
@@ -576,6 +578,48 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         )
 
     create_transcripts.short_description = 'Create transcript'
+
+    def remove_from_transcription_queue(self, request, queryset):
+        """Free the transcription queue by dropping the selected waiting items."""
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to change the queue.')
+        from media.tasks import cancel_transcription
+
+        cancelled, running = cancel_transcription(queryset)
+
+        if not cancelled and not running:
+            self.message_user(request, 'None of the selected items was waiting to be transcribed.')
+            return
+
+        message = f'Removed {cancelled} item(s) from the transcription queue.'
+        if running:
+            message += (
+                f' {running} item(s) are being transcribed right now and were left to '
+                f'finish - work already under way cannot be interrupted.'
+            )
+        self.message_user(request, message)
+
+    remove_from_transcription_queue.short_description = 'Remove from transcription queue'
+
+    def remove_from_download_queue(self, request, queryset):
+        """Free the download queue by dropping the selected waiting items."""
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to change the queue.')
+        from media.tasks import cancel_download
+
+        cancelled = cancel_download(queryset)
+
+        if not cancelled:
+            self.message_user(request, 'None of the selected items was waiting to download.')
+            return
+
+        self.message_user(
+            request,
+            f'Removed {cancelled} item(s) from the download queue. They are kept as '
+            f'errors saying why - use "Requeue selected items" to put them back.',
+        )
+
+    remove_from_download_queue.short_description = 'Remove from download queue' 
 
     def transcript_display(self, obj):
         """Where this item is in the transcription process, at a glance."""

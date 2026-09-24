@@ -556,7 +556,9 @@ class TranscriptStatusTest(TestCase):
         """A good download whose transcription failed must not look like a bad download"""
         from media.tasks import transcribe_media
 
-        item = self._item(error_message='')
+        # Queued, because that is the only state from which the task does any work -
+        # anything else means it was taken out of the queue while waiting
+        item = self._item(error_message='', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
 
         with patch('media.tasks.transcribe_item', side_effect=RuntimeError('whisper down')):
             transcribe_media.call_local(item.guid)

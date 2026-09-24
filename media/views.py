@@ -1121,12 +1121,21 @@ def stash_status_stream(request, guid):
                 # Detect worker unavailable via the worker's heartbeat file rather
                 # than by how long the item has waited - a busy queue also makes an
                 # item wait, and the old time-based guess failed healthy downloads.
-                if item.status == MediaItem.STATUS_PREFETCHING and not worker_is_alive():
-                    seconds_waiting = int((timezone.now() - item.updated_at).total_seconds())
+                # Two things have to be true before calling the worker dead: no recent
+                # heartbeat AND the item having genuinely waited. Without the second
+                # condition a brand new item was failed on the very first poll - "waiting
+                # 0 seconds" - whenever the heartbeat happened to be a little stale.
+                grace = settings.STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS
+                seconds_waiting = (timezone.now() - item.updated_at).total_seconds()
+                if (
+                    item.status == MediaItem.STATUS_PREFETCHING
+                    and seconds_waiting > grace
+                    and not worker_is_alive()
+                ):
                     item.status = MediaItem.STATUS_ERROR
                     item.error_message = (
                         'Worker unavailable: no heartbeat from the Huey worker and the '
-                        f'task has been waiting {seconds_waiting} seconds. '
+                        f'task has been waiting {int(seconds_waiting)} seconds. '
                         'Start it with: python manage.py run_huey'
                     )
                     item.save()

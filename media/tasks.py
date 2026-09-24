@@ -8,8 +8,8 @@ from typing import List
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
-from huey import crontab
-from huey.contrib.djhuey import db_periodic_task, db_task
+from huey import crontab, signals
+from huey.contrib.djhuey import db_periodic_task, db_task, signal
 
 from media.models import MediaItem
 from media.processing import (
@@ -124,6 +124,41 @@ def schedule_retry_or_fail(item, reason):
     item.next_attempt_at = timezone.now() + wait
     item.save()
     return True
+
+
+_heartbeat_state = {'last': 0.0}
+
+
+def touch_heartbeat(interval_seconds=10):
+    """Record that the worker is alive, at most once every ``interval_seconds``.
+
+    Args:
+        interval_seconds: Minimum gap between writes
+    """
+    now = time.monotonic()
+    if now - _heartbeat_state['last'] < interval_seconds:
+        return
+    _heartbeat_state['last'] = now
+
+    path = heartbeat_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    except OSError:
+        # Proving liveness must never be the thing that breaks a task
+        pass
+
+
+@signal(signals.SIGNAL_EXECUTING, signals.SIGNAL_COMPLETE, signals.SIGNAL_ERROR)
+def _heartbeat_on_activity(signal_name, task, exc=None):
+    """Refresh the heartbeat whenever the worker does anything at all.
+
+    The periodic task below cannot be relied on by itself: it queues behind everything
+    else, so a worker with a backlog - which is a worker that is very much alive - stops
+    refreshing the heartbeat and the application declares itself dead. Signals fire on
+    the worker thread as each task runs, so a busy worker keeps proving it is working.
+    """
+    touch_heartbeat()
 
 
 def heartbeat_path():
@@ -1011,6 +1046,58 @@ def queue_transcription_if_enabled(item, log_path=None):
     return True
 
 
+def cancel_transcription(items):
+    """Take items out of the transcription queue.
+
+    Only items still waiting can be cancelled: one already being transcribed is running
+    inside a worker thread and cannot be interrupted, so it is left to finish.
+
+    Args:
+        items: Iterable of MediaItem
+
+    Returns:
+        tuple[int, int]: (cancelled, left alone because they are already running)
+    """
+    cancelled = 0
+    running = 0
+    for item in items:
+        if item.transcript_status == MediaItem.TRANSCRIPT_RUNNING:
+            running += 1
+            continue
+        if item.transcript_status != MediaItem.TRANSCRIPT_QUEUED:
+            continue
+        # Back to "never attempted" - the pending task checks this and does nothing
+        item.transcript_status = ''
+        item.transcript_error = ''
+        item.save(update_fields=['transcript_status', 'transcript_error', 'updated_at'])
+        cancelled += 1
+    return cancelled, running
+
+
+def cancel_download(items):
+    """Take items out of the paced download queue.
+
+    The record is kept rather than deleted, so nothing is lost: the item lands in ERROR
+    saying why, and "Requeue selected items" puts it back whenever you want it.
+
+    Args:
+        items: Iterable of MediaItem
+
+    Returns:
+        int: How many were taken out.
+    """
+    cancelled = 0
+    for item in items:
+        if item.status != MediaItem.STATUS_QUEUED:
+            continue
+        item.status = MediaItem.STATUS_ERROR
+        item.error_message = 'Removed from the download queue'
+        item.next_attempt_at = None
+        item.save(update_fields=['status', 'error_message', 'next_attempt_at', 'updated_at'])
+        cancelled += 1
+    return cancelled
+
+
 def queue_transcription(items):
     """Mark items as waiting for transcription and hand them to the worker.
 
@@ -1032,10 +1119,20 @@ def queue_transcription(items):
 
 @db_task()
 def transcribe_media(guid):
-    """Background task: transcribe one item."""
+    """Background task: transcribe one item.
+
+    A pending task cannot be pulled back out of the worker queue, so it checks whether
+    the item is still waiting before doing any work. That is what makes "remove from the
+    transcription queue" in the admin actually take effect rather than just changing a
+    label.
+    """
     try:
         item = MediaItem.objects.get(guid=guid)
     except MediaItem.DoesNotExist:
+        return
+
+    if item.transcript_status != MediaItem.TRANSCRIPT_QUEUED:
+        # Taken out of the queue (or already handled) while this task waited its turn
         return
 
     try:
@@ -1424,10 +1521,12 @@ def _download_queue_crontab():
 
 @db_periodic_task(crontab(minute='*'))
 def worker_heartbeat():
-    """Touch the heartbeat file so the UI can tell a dead worker from a busy one."""
-    path = heartbeat_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()
+    """Refresh the heartbeat while the worker is idle.
+
+    A busy worker is covered by the signal handler above; this is for the quiet periods
+    when no tasks are running at all.
+    """
+    touch_heartbeat(interval_seconds=0)
 
 
 @db_periodic_task(_download_queue_crontab())

@@ -554,6 +554,12 @@ MEDIA_ROOT = STASHCAST_MEDIA_DIR
 
 # Huey configuration (SQLite backend)
 
+# How many tasks may run at the same time. This is the ceiling for everything the worker
+# does, transcriptions included - and a transcription of a long episode occupies its
+# thread for as long as it takes. With too few threads a couple of transcriptions leave
+# nothing to download with, and the queue stops moving even though the worker is healthy.
+STASHCAST_WORKER_COUNT = env.int('STASHCAST_WORKER_COUNT', default=2)
+
 HUEY = {
     'huey_class': 'huey.SqliteHuey',
     'name': 'stashcast',
@@ -561,7 +567,7 @@ HUEY = {
     'immediate': 'test' in sys.argv
     or 'pytest' in sys.modules,  # Execute tasks immediately during tests
     'consumer': {
-        'workers': 2,
+        'workers': STASHCAST_WORKER_COUNT,
         'worker_type': 'thread',
     },
 }

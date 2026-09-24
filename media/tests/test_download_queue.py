@@ -380,3 +380,126 @@ class QueuePositionColumnTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('queue_position_display', response.content.decode())
+
+
+class CancelQueuesTest(TestCase):
+    """Taking items back out of the queues, to free them up.
+
+    A pending worker task cannot be pulled back out of the queue, so cancelling has to
+    be something the task itself notices - otherwise it would only change a label.
+    """
+
+    def setUp(self):
+        self.transcribe = patch('media.tasks.transcribe_item').start()
+        self.addCleanup(patch.stopall)
+
+    def _item(self, slug, **kwargs):
+        return MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            media_type=MediaItem.MEDIA_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            content_path='content.m4a',
+            **kwargs,
+        )
+
+    def test_waiting_transcription_is_cancelled(self):
+        from media.tasks import cancel_transcription
+
+        item = self._item('a', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+
+        cancelled, running = cancel_transcription([item])
+
+        self.assertEqual((cancelled, running), (1, 0))
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, '')
+
+    def test_cancelled_task_does_nothing_when_it_runs(self):
+        """The point of the whole thing: the queued work really does not happen"""
+        from media.tasks import cancel_transcription, transcribe_media
+
+        item = self._item('a', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+        cancel_transcription([item])
+
+        transcribe_media.call_local(item.guid)
+
+        self.transcribe.assert_not_called()
+
+    def test_a_still_queued_item_is_transcribed_normally(self):
+        """Guards the new check: it must not stop ordinary work"""
+        from media.tasks import transcribe_media
+
+        item = self._item('a', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+
+        transcribe_media.call_local(item.guid)
+
+        self.transcribe.assert_called_once()
+
+    def test_transcription_in_progress_is_left_to_finish(self):
+        """Work already running in a worker thread cannot be interrupted"""
+        from media.tasks import cancel_transcription
+
+        item = self._item('a', transcript_status=MediaItem.TRANSCRIPT_RUNNING)
+
+        cancelled, running = cancel_transcription([item])
+
+        self.assertEqual((cancelled, running), (0, 1))
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, MediaItem.TRANSCRIPT_RUNNING)
+
+    def test_finished_transcription_is_untouched(self):
+        from media.tasks import cancel_transcription
+
+        item = self._item('a', transcript_status=MediaItem.TRANSCRIPT_DONE)
+
+        cancel_transcription([item])
+
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, MediaItem.TRANSCRIPT_DONE)
+
+    def test_queued_download_is_cancelled(self):
+        from media.tasks import cancel_download
+
+        item = self._item('a', status=MediaItem.STATUS_QUEUED)
+
+        self.assertEqual(cancel_download([item]), 1)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_ERROR)
+        self.assertIn('Removed from the download queue', item.error_message)
+
+    def test_cancelled_download_leaves_the_queue(self):
+        from media.tasks import cancel_download, release_download_queue
+
+        item = self._item('a', status=MediaItem.STATUS_QUEUED)
+        cancel_download([item])
+
+        with patch('media.tasks.process_media') as process:
+            released = release_download_queue(limit=5)
+
+        self.assertEqual(released, [])
+        process.assert_not_called()
+
+    def test_download_in_progress_is_untouched(self):
+        """Cancelling must not yank the directory from under a running download"""
+        from media.tasks import cancel_download
+
+        item = self._item('a', status=MediaItem.STATUS_DOWNLOADING)
+
+        self.assertEqual(cancel_download([item]), 0)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_DOWNLOADING)
+
+    def test_cancelled_download_can_be_put_back(self):
+        """Nothing is lost - the record stays and can be requeued"""
+        from media.tasks import cancel_download, retry_failed_items
+
+        item = self._item('a', status=MediaItem.STATUS_QUEUED)
+        cancel_download([item])
+
+        retry_failed_items()
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_QUEUED)

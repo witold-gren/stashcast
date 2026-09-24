@@ -249,3 +249,126 @@ class StalePartFileTest(TestCase):
         self._run_download_in(tmp)
 
         self.assertTrue((tmp / 'download.log').exists())
+
+
+class HeartbeatSurvivesABusyWorkerTest(TestCase):
+    """The heartbeat must prove the worker is alive, not that it is idle.
+
+    It used to be a periodic task only. Periodic tasks queue behind everything else, so
+    a worker with a backlog - which is a worker very much alive - stopped refreshing it,
+    the application declared itself dead, and new downloads were failed on sight.
+    """
+
+    def setUp(self):
+        from media.tasks import _heartbeat_state, heartbeat_path
+
+        self.path = heartbeat_path()
+        if self.path.exists():
+            self.path.unlink()
+        _heartbeat_state['last'] = 0.0
+        self.addCleanup(lambda: self.path.exists() and self.path.unlink())
+
+    def test_task_activity_refreshes_the_heartbeat(self):
+        from media.tasks import _heartbeat_on_activity, worker_is_alive
+
+        self.assertFalse(worker_is_alive())
+
+        _heartbeat_on_activity('executing', None)
+
+        self.assertTrue(worker_is_alive())
+
+    def test_writes_are_throttled(self):
+        """Signals fire constantly on a busy worker; one write each would be wasteful"""
+        from media.tasks import _heartbeat_state, touch_heartbeat
+
+        touch_heartbeat()
+        first = self.path.stat().st_mtime
+        before = _heartbeat_state['last']
+
+        touch_heartbeat()
+
+        self.assertEqual(self.path.stat().st_mtime, first)
+        self.assertEqual(_heartbeat_state['last'], before)
+
+    def test_periodic_task_refreshes_even_when_throttled(self):
+        """The idle-worker path must not be blocked by the throttle"""
+        from media.tasks import touch_heartbeat, worker_heartbeat, worker_is_alive
+
+        touch_heartbeat()
+        self.path.unlink()
+
+        worker_heartbeat.call_local()
+
+        self.assertTrue(worker_is_alive())
+
+    def test_an_unwritable_path_does_not_raise(self):
+        """Proving liveness must never be the thing that breaks a task"""
+        from media.tasks import _heartbeat_state, touch_heartbeat
+
+        _heartbeat_state['last'] = 0.0
+        with patch('media.tasks.heartbeat_path') as mock_path:
+            mock_path.return_value.parent.mkdir.side_effect = OSError('read-only')
+            touch_heartbeat()
+
+
+@override_settings(STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS=180)
+class WorkerUnavailableGraceTest(TestCase):
+    """A new item must not be failed the instant the heartbeat looks stale"""
+
+    def setUp(self):
+        from media.tasks import heartbeat_path
+
+        path = heartbeat_path()
+        if path.exists():
+            path.unlink()
+
+    def _item(self, slug, minutes_waiting):
+        item = MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            status=MediaItem.STATUS_PREFETCHING,
+        )
+        MediaItem.objects.filter(pk=item.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=minutes_waiting)
+        )
+        item.refresh_from_db()
+        return item
+
+    def _read_one_event(self, item):
+        from django.test import Client
+
+        response = Client().get(f'/stash/{item.guid}/stream/')
+        next(iter(response.streaming_content))
+
+    def test_a_brand_new_item_is_not_failed(self):
+        """The reported bug: "the task has been waiting 0 seconds\""""
+        item = self._item('swiezy', minutes_waiting=0)
+
+        self._read_one_event(item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_PREFETCHING)
+
+    def test_an_item_waiting_far_too_long_is_still_reported(self):
+        """A worker that really is down must still be surfaced"""
+        item = self._item('stary', minutes_waiting=30)
+
+        self._read_one_event(item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_ERROR)
+        self.assertIn('Worker unavailable', item.error_message)
+
+    def test_a_live_worker_keeps_a_long_waiting_item_alive(self):
+        """Queued behind a backlog is not the same as abandoned"""
+        from media.tasks import touch_heartbeat
+
+        item = self._item('w-kolejce', minutes_waiting=30)
+        touch_heartbeat(interval_seconds=0)
+
+        self._read_one_event(item)
+
+        item.refresh_from_db()
+        self.assertEqual(item.status, MediaItem.STATUS_PREFETCHING)

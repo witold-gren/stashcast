@@ -57,7 +57,8 @@ Download queue
 ```
 
 `Queued` counts everything waiting; `due now` excludes items still serving a retry
-backoff. `Worker` reads the heartbeat file the worker touches every minute.
+backoff. `Worker` reads the heartbeat file, which a busy worker refreshes as it works and
+an idle one refreshes once a minute.
 
 ## Driving it by hand
 
@@ -241,6 +242,7 @@ requeue the affected items with `./manage.py download_queue --retry-errors`.
 | `STASHCAST_DOWNLOAD_MAX_ATTEMPTS` | `3` | Attempts before an item becomes `ERROR` (`1` disables retrying) |
 | `STASHCAST_STUCK_TIMEOUT_MINUTES` | `30` | Time **without progress** after which an in-progress item counts as abandoned |
 | `STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS` | `180` | Heartbeat age at which the worker is reported down |
+| `STASHCAST_WORKER_COUNT` | `2` | How many tasks the worker may run at the same time |
 | `STASHCAST_YOUTUBE_SYNC_HOURS` | `3` | How often channels are checked for new uploads |
 | `STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS` | `5` | How many recent uploads each check considers |
 
@@ -310,8 +312,23 @@ being enqueued, that check also fired on a **healthy but busy** queue — which 
 adding a channel produced a burst of "Huey worker may not be running" errors on
 downloads that were merely waiting their turn.
 
-Liveness is now reported by a heartbeat file (`<STASHCAST_DATA_DIR>/worker-heartbeat`)
-that the worker touches every minute, so a busy worker is never mistaken for a dead one.
+Liveness is now reported by a heartbeat file (`<STASHCAST_DATA_DIR>/worker-heartbeat`).
+It is refreshed from two places, and it needs both:
+
+- **on every task the worker starts, finishes or fails**, throttled to one write per ten
+  seconds. This is what proves a *busy* worker is alive.
+- **by a periodic task once a minute**, for a worker that is idle and therefore emitting
+  no signals at all.
+
+The periodic task alone is not enough: periodic tasks queue behind everything else, so a
+worker with a long backlog — a worker that is very much alive — stopped refreshing the
+file, the application declared it dead, and every new download failed on sight with
+*"Worker unavailable ... waiting 0 seconds"*.
+
+The status stream also requires the item to have genuinely waited longer than
+`STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS` before reporting the worker as down. A
+freshly created item has waited zero seconds and says nothing about the worker's health.
+
 Items abandoned by a worker that really did die are picked up by the recovery pass
 instead.
 
@@ -321,3 +338,9 @@ If the queue is not moving, check the worker first:
 ./manage.py download_queue   # look at the Worker line
 python manage.py run_huey    # start it if it is down
 ```
+
+A worker can also be alive and still move nothing, because every thread is busy with
+something long. Transcribing an hour-long episode holds a thread for as long as it
+takes, so with the default two threads a pair of transcriptions leaves nothing to
+download with. `STASHCAST_WORKER_COUNT` raises the ceiling — bearing in mind that each
+extra thread is another concurrent request to the speech-to-text server.
