@@ -168,10 +168,29 @@ os.environ['NLTK_DATA'] = os.environ.get('NLTK_DATA', str(STASHCAST_DATA_DIR))
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# SQLite is shared by the web process and the Huey worker threads, which both write:
+# downloads update item status, the paced queue releases work, transcription records
+# progress and huey_monitor inserts a row per task signal. In SQLite's default rollback
+# journal a writer locks the whole file against every reader, and Django gives up after
+# five seconds with "database is locked". WAL lets readers carry on while a write is in
+# progress - Huey already sets it on its own database for exactly this reason.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': STASHCAST_DATA_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            # Wait for a busy database rather than failing; a download finishing while
+            # the queue releases the next one is normal, not an error
+            'timeout': int(os.environ.get('STASHCAST_DB_TIMEOUT', '30')),
+            # Take the write lock when the transaction opens instead of upgrading to it
+            # halfway through, which is what turns contention into an immediate failure
+            'transaction_mode': 'IMMEDIATE',
+            'init_command': (
+                'PRAGMA journal_mode=WAL;'
+                'PRAGMA synchronous=NORMAL;'
+                'PRAGMA foreign_keys=ON;'
+            ),
+        },
     }
 }
 

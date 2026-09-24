@@ -1848,3 +1848,56 @@ class SlugWordIntegrityTest(TestCase):
 
         self.assertEqual(slug, 'zazolc-gesla-jazn')
         self.assertNotIn('za-', slug)
+
+
+class SqliteConcurrencyTest(TestCase):
+    """The database is written by the web process and two worker threads at once.
+
+    In SQLite's default rollback journal a writer locks the whole file against every
+    reader, and Django gives up after five seconds with "database is locked" - which is
+    exactly what the worker hit while a download and the paced queue overlapped.
+    """
+
+    def test_write_ahead_logging_is_configured(self):
+        """Checked as configuration rather than as a live pragma: the test runner uses
+        an in-memory database, where WAL does not apply and journal_mode reads 'memory'.
+        The pragma itself was confirmed against a real file-backed database."""
+        from django.conf import settings
+
+        init_command = settings.DATABASES['default']['OPTIONS']['init_command']
+        self.assertIn('journal_mode=WAL', init_command)
+
+    def test_busy_timeout_is_longer_than_the_default(self):
+        """Five seconds is not enough while a download is finishing"""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute('PRAGMA busy_timeout;')
+            self.assertGreaterEqual(cursor.fetchone()[0], 10000)
+
+    def test_transactions_take_the_write_lock_up_front(self):
+        """Upgrading to a write lock mid-transaction is what fails immediately"""
+        from django.db import connection
+
+        self.assertEqual(connection.transaction_mode, 'IMMEDIATE')
+
+    def test_a_reader_does_not_block_a_writer(self):
+        """The behaviour all of the above is for"""
+        from django.db import connection
+
+        from media.models import MediaItem
+
+        MediaItem.objects.create(
+            source_url='https://youtu.be/a',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug='wspolbieznosc',
+        )
+
+        # Hold an open read cursor while writing through the same connection
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT COUNT(*) FROM media_mediaitem;')
+            MediaItem.objects.filter(slug='wspolbieznosc').update(title='zapisane')
+
+        self.assertEqual(
+            MediaItem.objects.get(slug='wspolbieznosc').title, 'zapisane'
+        )
