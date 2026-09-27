@@ -1,0 +1,13 @@
+{% comment %}
+The icon and manifest links.
+
+Kept apart from the meta tags because the admin gets these from UNFOLD['SITE_FAVICONS']
+instead: unfold renders them on every admin page including the login screen, which does
+not go through admin/base_site.html. Including them here as well would emit each link
+twice on every admin page.
+{% endcomment %}
+{% load static %}
+<link rel="icon" type="image/x-icon" href="{% static 'media/favicon.ico' %}">
+<link rel="icon" type="image/png" sizes="32x32" href="{% static 'media/icons/icon-32.png' %}">
+<link rel="apple-touch-icon" sizes="180x180" href="{% static 'media/icons/icon-180.png' %}">
+<link rel="manifest" href="{% url 'manifest' %}">

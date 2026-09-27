@@ -6,7 +6,10 @@ from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.utils import timezone
+from django.utils.translation import get_language
+from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -54,6 +57,60 @@ def _assign_group(item, group):
 def home_view(request):
     """Landing page with quick access to add URLs."""
     return render(request, 'media/home.html')
+
+
+def manifest_view(request):
+    """The web app manifest, so StashCast can be installed to a home screen.
+
+    Served from a view rather than as a static file so the content type is right
+    whatever is in front of Django - Caddy does not recognise ``.webmanifest`` on every
+    platform, and a manifest offered as ``text/plain`` is ignored by the browser.
+
+    iOS reads ``name``, ``short_name``, ``display`` and the icons from here; the
+    ``apple-*`` meta tags in the page head cover the older iPhones that do not.
+    """
+    def icon(path):
+        # Absolute: a manifest can be read from a different origin than it describes
+        return request.build_absolute_uri(static(path))
+
+    return JsonResponse(
+        {
+            'id': settings.STASHCAST_PWA_START_URL,
+            'name': settings.STASHCAST_PWA_NAME,
+            'short_name': settings.STASHCAST_PWA_SHORT_NAME,
+            'description': _('Download media from the web and publish it as podcast feeds'),
+            'start_url': settings.STASHCAST_PWA_START_URL,
+            'scope': '/',
+            'display': 'standalone',
+            'orientation': 'any',
+            'theme_color': settings.STASHCAST_PWA_THEME_COLOR,
+            'background_color': settings.STASHCAST_PWA_BACKGROUND_COLOR,
+            'lang': get_language() or settings.LANGUAGE_CODE,
+            'icons': [
+                {
+                    'src': icon('media/icons/icon-192.png'),
+                    'sizes': '192x192',
+                    'type': 'image/png',
+                    'purpose': 'any',
+                },
+                {
+                    'src': icon('media/icons/icon-512.png'),
+                    'sizes': '512x512',
+                    'type': 'image/png',
+                    'purpose': 'any',
+                },
+                {
+                    # Android crops this one to whatever shape the launcher uses, so it
+                    # carries the same artwork with a wider margin
+                    'src': icon('media/icons/icon-maskable-512.png'),
+                    'sizes': '512x512',
+                    'type': 'image/png',
+                    'purpose': 'maskable',
+                },
+            ],
+        },
+        content_type='application/manifest+json',
+    )
 
 
 @csrf_exempt

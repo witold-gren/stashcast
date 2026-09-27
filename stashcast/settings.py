@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import environ
+from django.templatetags.static import static
 
 env = environ.Env(
     # set casting, default value
@@ -126,6 +127,25 @@ UNFOLD = {
             },
         ],
     },
+    # So that adding the admin to the home screen picks up the app icon and the
+    # manifest, not just the landing page. Resolved per request, hence the callables.
+    'SITE_FAVICONS': [
+        {
+            'rel': 'icon',
+            'type': 'image/png',
+            'sizes': '32x32',
+            'href': lambda request: static('media/icons/icon-32.png'),
+        },
+        {
+            'rel': 'apple-touch-icon',
+            'sizes': '180x180',
+            'href': lambda request: static('media/icons/icon-180.png'),
+        },
+        {
+            'rel': 'manifest',
+            'href': lambda request: '/manifest.webmanifest',
+        },
+    ],
 }
 
 MIDDLEWARE = [
@@ -144,7 +164,10 @@ ROOT_URLCONF = 'stashcast.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Searched before any app's templates - the only place from which a template
+        # that unfold also ships can be overridden, since unfold is listed first in
+        # INSTALLED_APPS
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -289,6 +312,16 @@ REQUIRE_USER_TOKEN_FOR_FEEDS = (
 
 # Optional environment variables
 STASHCAST_MEDIA_BASE_URL = os.environ.get('STASHCAST_MEDIA_BASE_URL', None)
+
+# "Add to Home Screen" (iOS) / installable web app
+# The name shown under the icon, the page the icon opens, and the colours iOS and Android
+# paint around the app before the first frame is drawn.
+STASHCAST_PWA_NAME = env('STASHCAST_PWA_NAME', default='StashCast')
+# iOS truncates the home-screen label at roughly 12 characters
+STASHCAST_PWA_SHORT_NAME = env('STASHCAST_PWA_SHORT_NAME', default='StashCast')
+STASHCAST_PWA_START_URL = env('STASHCAST_PWA_START_URL', default='/')
+STASHCAST_PWA_THEME_COLOR = env('STASHCAST_PWA_THEME_COLOR', default='#0f172a')
+STASHCAST_PWA_BACKGROUND_COLOR = env('STASHCAST_PWA_BACKGROUND_COLOR', default='#0a1120')
 
 # Default yt-dlp args optimized for mobile playback
 # Audio: AAC codec in M4A container is widely supported

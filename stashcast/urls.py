@@ -37,6 +37,7 @@ from media.views import (
     item_regenerate_summary_view,
     item_unarchive_view,
     list_view,
+    manifest_view,
     preferences_view,
     stash_progress_view,
     stash_status_stream,
@@ -53,6 +54,19 @@ urlpatterns = [
         'favicon.ico',
         RedirectView.as_view(url='/static/media/favicon.ico', permanent=True),
         name='favicon',
+    ),
+    # "Add to Home Screen": the manifest, plus the icon at the well-known path older
+    # iPhones look for when a page offers no <link rel="apple-touch-icon">
+    path('manifest.webmanifest', manifest_view, name='manifest'),
+    path(
+        'apple-touch-icon.png',
+        RedirectView.as_view(url='/static/media/icons/icon-180.png', permanent=True),
+        name='apple_touch_icon',
+    ),
+    path(
+        'apple-touch-icon-precomposed.png',
+        RedirectView.as_view(url='/static/media/icons/icon-180.png', permanent=True),
+        name='apple_touch_icon_precomposed',
     ),
     # Landing page
     path('', home_view, name='home'),

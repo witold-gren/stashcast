@@ -1,0 +1,31 @@
+{% extends "admin/base.html" %}
+
+{% comment %}
+Adds the home-screen tags to every admin page.
+
+unfold ships an admin/base_site.html of its own and is listed before `media` in
+INSTALLED_APPS, so an app template cannot win against it. A project-level template
+directory is searched before every app, which is why this file lives here rather than in
+media/templates/.
+
+The three blocks below are unfold's; they are repeated verbatim because overriding the
+file replaces it wholesale, and dropping them would cost the admin its branding. Only
+`extrahead` is ours. If the admin header ever looks wrong after upgrading unfold, compare
+this file with unfold/templates/admin/base_site.html.
+{% endcomment %}
+
+{% load i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    {% comment %} Only the meta tags: the links come from UNFOLD['SITE_FAVICONS'] {% endcomment %}
+    {% include "media/_pwa_meta.html" %}
+{% endblock %}

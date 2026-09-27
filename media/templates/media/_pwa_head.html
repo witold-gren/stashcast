@@ -1,0 +1,7 @@
+{% comment %}
+Everything a browser needs to install StashCast to a home screen, for pages outside the
+admin. Admin pages take the icons from UNFOLD['SITE_FAVICONS'] and the meta tags from
+templates/admin/base_site.html, so they include only the second half of this.
+{% endcomment %}
+{% include "media/_pwa_icons.html" %}
+{% include "media/_pwa_meta.html" %}

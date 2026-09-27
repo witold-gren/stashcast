@@ -34,6 +34,7 @@ I created this since friends and family often send me links to listen to a singl
 - **Multi-language support** - UI and video subtitles in your preferred language (see [i18n docs](docs/INTERNATIONALIZATION.md))
 - Async background processing via task queue
 - **YouTube channel subscriptions** with a paced download queue and automatic retries (see [download queue docs](docs/DOWNLOAD_QUEUE.md))
+- **Installable on a phone** - add it to the iOS home screen and it opens as its own app (see [home screen docs](docs/HOME_SCREEN_APP.md))
 - Automatic media type detection (audio/video)
 - Podcast feed generation (RSS/Atom) for audio and video
 - Optional transcoding via ffmpeg

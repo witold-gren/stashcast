@@ -1,0 +1,21 @@
+{% comment %}
+The tags iOS reads when "Add to Home Screen" is tapped.
+
+Without them the result is a Safari bookmark rather than something that opens as an app
+of its own. iOS 16.4 and later can take the same information from the manifest, so the
+admin login screen - which these do not reach - still installs correctly on a current
+iPhone; everywhere else both are offered.
+{% endcomment %}
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+
+{% comment %}
+"black" keeps the page below the status bar. "black-translucent" would draw underneath
+it, which needs safe-area padding on every page to stop content hiding behind the notch.
+{% endcomment %}
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+{% comment %} The label under the icon; iOS truncates it at about 12 characters {% endcomment %}
+<meta name="apple-mobile-web-app-title" content="{{ pwa_short_name }}">
+<meta name="application-name" content="{{ pwa_short_name }}">
+<meta name="theme-color" content="{{ pwa_theme_color }}">
