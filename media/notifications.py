@@ -1,6 +1,7 @@
 """Web push notifications (django-webpush).
 
-Every notification goes to each staff member's subscribed devices. Push is optional:
+Item notifications go to the users picked in the item's group (MediaGroup.notify_users),
+on every device they subscribed; an empty list means nobody. Push is optional:
 without VAPID keys (STASHCAST_PUSH_ENABLED False) every function here is a no-op, and
 no function ever raises - a notification is never worth failing a download for.
 
@@ -114,6 +115,13 @@ def _item_body(item):
     return '\n'.join(p for p in (header, description) if p)
 
 
+def _group_users(item):
+    """Users who asked for notifications from the item's group (none without a group)."""
+    if not item.group_id:
+        return []
+    return list(item.group.notify_users.all())
+
+
 def _base_payload(item, title):
     return {
         'title': title,
@@ -143,7 +151,7 @@ def notify_approval_request(item):
             'requireInteraction': True,
         }
     )
-    return send_to_staff(payload)
+    return send_to_staff(payload, users=_group_users(item))
 
 
 def notify_download_ready_if_enabled(item):
@@ -156,7 +164,10 @@ def notify_download_ready_if_enabled(item):
     if not group or not group.notify_on_download or group.require_approval:
         return 0
     try:
-        return send_to_staff(_base_payload(item, f'Ready: {item.title or item.source_url}'))
+        return send_to_staff(
+            _base_payload(item, f'Ready: {item.title or item.source_url}'),
+            users=_group_users(item),
+        )
     except Exception as e:
         logger.warning('Ready notification for %s failed: %s', item.guid, e)
         return 0

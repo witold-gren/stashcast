@@ -71,11 +71,15 @@ Stashcast retries a failed download with alternative YouTube player clients befo
 giving up, clearing yt-dlp's player cache between attempts. The chain is configurable:
 
 ```bash
-STASHCAST_YTDLP_PLAYER_CLIENTS=default,tv,web_safari,mweb,tv_embedded
+STASHCAST_YTDLP_PLAYER_CLIENTS=default,tv,web_safari,mweb
 ```
 
-`default` means "whatever yt-dlp picks on its own". Setting a single value disables
-the fallback. Pinning a client yourself via
+`default` means "whatever yt-dlp picks on its own". The next client is tried after a
+403, after `Requested format is not available` (YouTube sometimes puts a session on
+SABR-only streaming, which leaves nothing downloadable) and after `The page needs to be
+reloaded`. When every client fails, the error of the **first** attempt is reported:
+the fallback clients tend to fail in their own ways, and showing the last of those used
+to hide the real cause. Setting a single value disables the fallback. Pinning a client yourself via
 `--extractor-args "youtube:player_client=..."` also disables it, since your choice wins.
 
 ### 4. Supply cookies from a logged-in session
@@ -128,7 +132,7 @@ If none of the above helps, the IP itself is the problem - continue with
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `STASHCAST_YTDLP_JS_RUNTIMES` | (auto-detect `deno`) | JS runtime for player challenges |
-| `STASHCAST_YTDLP_PLAYER_CLIENTS` | `default,tv,web_safari,mweb,tv_embedded` | Clients retried after a 403 |
+| `STASHCAST_YTDLP_PLAYER_CLIENTS` | `default,tv,web_safari,mweb` | Clients retried after a 403 or "Requested format is not available" |
 | `STASHCAST_YTDLP_COOKIES_FILE` | (none) | Netscape cookies.txt path |
 | `STASHCAST_YTDLP_COOKIES_FROM_BROWSER` | (none) | Read cookies from a local browser |
 | `STASHCAST_YTDLP_IMPERSONATE` | (none) | Browser TLS fingerprint, e.g. `chrome` |

@@ -120,8 +120,12 @@ subscribed with the old ones.
 ### 3. Turn them on per device
 
 Open **Tools → Notifications** on the phone, tap **Enable on this device** and allow
-notifications. **Send test notification** checks the whole chain. Every staff account
-receives notifications on all of its subscribed devices.
+notifications. **Send test notification** checks the whole chain (it goes to your own
+devices only).
+
+Which accounts hear about which group is set per group: **Notify users** under *Approval
+& notifications*. A notification reaches every device each of those accounts enabled.
+Nobody else is notified, and nobody at all while the list is empty.
 
 | | Android (Chrome) | iPhone |
 |---|---|---|

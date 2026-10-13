@@ -97,6 +97,16 @@ class MediaGroup(models.Model):
             'while "require approval" is on - you already hear about every upload then.'
         ),
     )
+    notify_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='notified_groups',
+        limit_choices_to={'is_staff': True, 'is_active': True},
+        help_text=(
+            'Who receives this group\'s push notifications - approval requests and '
+            '"ready" notices. Nobody is notified while the list is empty.'
+        ),
+    )
 
     auto_delete_enabled = models.BooleanField(
         default=False,

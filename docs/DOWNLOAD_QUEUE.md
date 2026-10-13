@@ -129,7 +129,8 @@ downloading on its own:
 
 1. A new upload is recorded as **Awaiting approval**. Only its title, description and
    thumbnail are fetched, nothing is downloaded and nothing appears in any feed.
-2. A push notification shows the title and thumbnail with two buttons:
+2. A push notification shows the title and thumbnail with two buttons. It goes only to
+   the accounts picked in the group's **Notify users** list:
    - **Download** starts the download right away (it skips the paced queue — you asked
      for this one). Once it finishes it is in the group's feed like any other episode.
    - **Reject** marks it **Rejected**. The record stays, without files, so the next sync
@@ -146,8 +147,10 @@ wait for approval — answer them from the admin.
 
 ### Notify when a download is ready
 
-**Notify on download** sends a notification whenever a new item in the group finishes
-downloading. It is ignored while *Require approval* is on: there you already chose to
+**Notify on download** sends a notification to the group's **Notify users** whenever a
+new item in the group finishes downloading. The group cannot be saved with it ticked and
+nobody picked. *Require approval* with an empty list is allowed (answer in the admin), and
+saving it shows a warning. It is ignored while *Require approval* is on: there you already chose to
 download the item from a notification, and a second one would only repeat it.
 
 ### Deleting old episodes automatically
@@ -344,8 +347,37 @@ the first's half-written file. The download reported success but the media file 
 truncated - and only a manual immediate re-fetch produced a correct one. Slow settings
 such as `STASHCAST_YTDLP_SLEEP_INTERVAL` made it far easier to hit.
 
+The progress reports only cover the transfer itself. What comes after it - yt-dlp's
+audio conversion, merging and metadata steps, which each rewrite the whole file, the
+video repack, and moving the files into place - reported nothing. On a long episode and
+a slow CPU (an ARM box, say) those steps outlast the timeout and the same double run
+happened anyway. It showed up as `Conversion failed!`, `unable to obtain file audio
+codec with ffprobe`, and files that play shorter than the source (the **Duration**
+filter). Two things now prevent it:
+
+- **The whole task keeps the item alive.** A background thread touches the item once a
+  minute from the first step to the last. The thread dies with the worker, so a crashed
+  worker still goes quiet and is recovered as before.
+- **One task per item.** Each run takes a lock on the item
+  (`STASHCAST_DATA_DIR/locks/<guid>.lock`, via `flock`). A second run that starts anyway
+  sees the lock and leaves the item alone. The operating system releases the lock when a
+  worker dies, so a crash can never leave an item locked.
+
+To check whether an older download was hit, count the task starts in its log. Two means
+it ran twice:
+
+```bash
+grep -c "=== TASK STARTED ===" data_docker/media/*/download.log | grep -v ":1$"
+```
+
+(Items downloaded in batch mode write `TASK STARTED (BATCH MODE)` instead and show up
+as `:0`.) Re-fetch the items it lists.
+
 For the same reason the admin's **Requeue selected items** action skips items that are
 downloading right now and says so; genuinely stalled ones are still requeued.
+
+Audio downloads prefer YouTube's AAC stream (`bestaudio[ext=m4a]`), which needs no
+conversion to m4a at all - a plain stream copy. Opus is used only when there is no AAC.
 
 ## Worker liveness
 

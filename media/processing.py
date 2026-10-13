@@ -13,14 +13,19 @@ All functions work with MediaItem model instances and handle:
 - Slug generation and database updates
 """
 
+import fcntl
+import logging
 import os
 import shutil
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.db import connection
 from django.utils import timezone
 
 from media.models import MediaItem
@@ -318,6 +323,85 @@ def make_download_heartbeat(item, interval_seconds=60):
         MediaItem.objects.filter(pk=item.pk).update(updated_at=timezone.now())
 
     return heartbeat
+
+
+@contextmanager
+def task_heartbeat(guids, interval_seconds=60):
+    """Keep updated_at fresh for the items a task works on, for the task's whole run.
+
+    make_download_heartbeat only fires while yt-dlp transfers data. After that come
+    yt-dlp's postprocessors (audio conversion, merging, metadata, subtitles - each one
+    rewrites the whole file), ensure_playable_video and process_files, none of which
+    report progress. On a long episode and a slow CPU those easily outlast
+    STASHCAST_STUCK_TIMEOUT_MINUTES, recover_stuck_items took the item for abandoned
+    and released it again, and the second run raced the first in the same tmp-<guid>
+    directory: "Conversion failed!", "unable to obtain file audio codec with ffprobe"
+    and truncated files.
+
+    A background thread beats for as long as the task runs and stops with it - and
+    since the thread dies with the worker, a dead worker still goes quiet and is
+    recovered as before. Only items still in progress are touched.
+
+    Args:
+        guids: Collection of MediaItem pks to keep alive. A set may be extended while
+            the task runs (the batch task adds items as it creates them).
+        interval_seconds: Gap between database writes
+    """
+    stop = threading.Event()
+
+    def beat():
+        try:
+            while not stop.wait(interval_seconds):
+                try:
+                    MediaItem.objects.filter(
+                        pk__in=list(guids), status__in=MediaItem.IN_PROGRESS_STATUSES
+                    ).update(updated_at=timezone.now())
+                except Exception as e:
+                    logging.getLogger(__name__).warning('Task heartbeat failed: %s', e)
+        finally:
+            # Threads get their own database connection; do not leak it
+            connection.close()
+
+    thread = threading.Thread(target=beat, name='stashcast-task-heartbeat', daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=10)
+
+
+@contextmanager
+def item_lock(guid):
+    """Make sure only one task processes an item at a time.
+
+    Yields True when this task holds the lock, False when another one already does -
+    the caller should then leave the item alone. The heartbeat above stops a running
+    download from being recovered; this is the guarantee for whatever still slips
+    through (a manual re-fetch while it runs, a requeue, a duplicate task).
+
+    flock() locks belong to the open file, so this also separates Huey's worker
+    threads within one process, and the operating system drops the lock when a
+    worker dies - a crash can never leave an item locked.
+    """
+    lock_dir = Path(settings.STASHCAST_DATA_DIR) / 'locks'
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    path = lock_dir / f'{guid}.lock'
+
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            # Removed while still held, so no other task can lock this inode after us
+            path.unlink(missing_ok=True)
+    finally:
+        os.close(fd)
 
 
 def download_ytdlp(item, tmp_dir, log_path):

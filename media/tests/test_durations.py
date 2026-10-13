@@ -296,7 +296,7 @@ class DurationRecordedByPipelineTest(TestCase):
 
         from media import tasks
 
-        source = inspect.getsource(tasks.process_media.func)
+        source = inspect.getsource(tasks._process_media)
         self.assertIn('record_download_duration', source)
 
     def test_batch_download_path_records_duration(self):
@@ -304,7 +304,7 @@ class DurationRecordedByPipelineTest(TestCase):
 
         from media import tasks
 
-        source = inspect.getsource(tasks.process_media_batch.func)
+        source = inspect.getsource(tasks._process_media_batch)
         self.assertIn('record_download_duration', source)
 
     def test_measurement_happens_after_the_move(self):
@@ -314,7 +314,7 @@ class DurationRecordedByPipelineTest(TestCase):
 
         from media import tasks
 
-        source = inspect.getsource(tasks.process_media.func)
+        source = inspect.getsource(tasks._process_media)
         self.assertLess(
             source.index('shutil.move(str(tmp_dir), str(final_dir))'),
             source.index('record_download_duration'),

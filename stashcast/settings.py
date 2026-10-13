@@ -437,12 +437,14 @@ STASHCAST_YTDLP_COOKIES_FROM_BROWSER = os.environ.get(
     'STASHCAST_YTDLP_COOKIES_FROM_BROWSER', None
 )
 
-# YouTube player clients tried in order when a download fails with 403 Forbidden.
+# YouTube player clients tried in order when a download fails in a client-specific way:
+# 403 Forbidden, "Requested format is not available" (SABR-only session) or "The page
+# needs to be reloaded". On total failure the first attempt's error is reported.
 # The first entry 'default' means "whatever yt-dlp picks on its own"; the remaining
 # ones are retried with an explicit --extractor-args youtube:player_client=...
 # Set to a single value to disable the fallback chain.
 STASHCAST_YTDLP_PLAYER_CLIENTS = os.environ.get(
-    'STASHCAST_YTDLP_PLAYER_CLIENTS', 'default,tv,web_safari,mweb,tv_embedded'
+    'STASHCAST_YTDLP_PLAYER_CLIENTS', 'default,tv,web_safari,mweb'
 )
 
 # Optional: impersonate a browser TLS/HTTP fingerprint (requires curl_cffi).

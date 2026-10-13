@@ -97,10 +97,36 @@ def apply_network_opts(ydl_opts, logger=None):
     return ydl_opts
 
 
-def _is_forbidden_error(exc):
-    """Return True when the exception looks like an HTTP 403 from the media host."""
-    message = str(exc)
-    return '403' in message or 'Forbidden' in message
+def default_format_spec(resolved_type):
+    """
+    yt-dlp format selector used unless the settings pass their own --format.
+
+    Audio prefers YouTube's AAC stream (m4a): with it the m4a conversion is a plain
+    stream copy. Plain "bestaudio" picks Opus, which then has to be re-encoded to AAC -
+    slow on long episodes and the step behind "Conversion failed!" errors.
+    """
+    if resolved_type == 'audio':
+        return 'bestaudio[ext=m4a]/bestaudio/best'
+    return 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+
+
+# Failures that depend on the YouTube player client used for extraction, so another
+# client may well succeed: 403 on the stream URLs, a session pushed onto SABR-only
+# streaming (no downloadable formats left, "Only images are available"), or a client
+# YouTube currently refuses ("The page needs to be reloaded").
+_CLIENT_SPECIFIC_ERRORS = (
+    '403',
+    'forbidden',
+    'requested format is not available',
+    'only images are available',
+    'the page needs to be reloaded',
+)
+
+
+def _is_client_specific_error(exc):
+    """True when retrying with another YouTube player client may help."""
+    message = str(exc).lower()
+    return any(pattern in message for pattern in _CLIENT_SPECIFIC_ERRORS)
 
 
 def _player_client_chain():
@@ -125,12 +151,19 @@ def _has_explicit_player_client(ydl_opts):
 
 def run_ytdlp_with_fallback(build_opts, run, url_label='', logger=None):
     """
-    Run a yt-dlp operation, retrying with alternative YouTube player clients on 403.
+    Run a yt-dlp operation, retrying with alternative YouTube player clients.
 
     YouTube hands out stream URLs that are tied to the player client used during
     extraction. When the chosen client's URLs require a PO token the extraction
-    still succeeds but the actual media download fails with 403 Forbidden. Retrying
-    with a different client (and a cleared player cache) works around it.
+    still succeeds but the actual media download fails with 403 Forbidden; some
+    sessions get no downloadable formats at all. Retrying with a different client
+    (and a cleared player cache) works around both.
+
+    Only client-specific failures move on to the next client (see
+    _is_client_specific_error). When every client fails, the error of the FIRST
+    attempt is raised: the fallback clients fail in their own ways ("Requested format
+    is not available", "The page needs to be reloaded"), and reporting the last of
+    those used to hide what actually went wrong - typically a 403.
 
     Args:
         build_opts: Callable returning a fresh yt-dlp options dict per attempt
@@ -147,7 +180,7 @@ def run_ytdlp_with_fallback(build_opts, run, url_label='', logger=None):
             logger(message)
 
     clients = _player_client_chain()
-    last_error = None
+    first_error = None
 
     for attempt, client in enumerate(clients):
         ydl_opts = build_opts()
@@ -165,19 +198,20 @@ def run_ytdlp_with_fallback(build_opts, run, url_label='', logger=None):
             with yt_dlp.YoutubeDL({'quiet': True}) as cache_ydl:
                 cache_ydl.cache.remove()
             log(
-                f'Retry {attempt}/{len(clients) - 1} after 403 Forbidden'
-                f' using player_client={client}' + (f' for {url_label}' if url_label else '')
+                f'Retry {attempt}/{len(clients) - 1} using player_client={client}'
+                + (f' for {url_label}' if url_label else '')
             )
 
         try:
             return run(ydl_opts)
         except Exception as e:
-            if not _is_forbidden_error(e):
+            if not _is_client_specific_error(e):
                 raise
-            last_error = e
-            log(f'Attempt {attempt + 1} failed with 403 Forbidden: {e}')
+            if first_error is None:
+                first_error = e
+            log(f'Attempt {attempt + 1} failed: {e}')
 
-    raise last_error
+    raise first_error
 
 
 def download_file(file_path, out_path, logger=None):
@@ -386,12 +420,8 @@ def _download_ytdlp_inner(
     temp_dir = Path(temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prepare yt-dlp options
-    # Start with fallback format specs
-    if resolved_type == 'audio':
-        format_spec = 'bestaudio/best'
-    else:
-        format_spec = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+    # Prepare yt-dlp options (settings may still override the format)
+    format_spec = default_format_spec(resolved_type)
 
     temp_output = temp_dir / 'download.%(ext)s'
 
@@ -702,11 +732,8 @@ def download_ytdlp_batch(
     downloads: Dict[str, DownloadedFileInfo] = {}
     errors: Dict[str, str] = {}
 
-    # Prepare yt-dlp options
-    if resolved_type == 'audio':
-        format_spec = 'bestaudio/best'
-    else:
-        format_spec = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+    # Prepare yt-dlp options (settings may still override the format)
+    format_spec = default_format_spec(resolved_type)
 
     # Use %(id)s to separate files into folders by video ID
     # We'll map IDs back to URLs after download

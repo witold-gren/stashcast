@@ -1759,7 +1759,8 @@ class BatchDownloadFieldsTest(TestCase):
 
         from media import tasks
 
-        source = inspect.getsource(tasks.process_media_batch.func)
+        # The task only wraps the pipeline in a heartbeat; the pipeline itself lives here
+        source = inspect.getsource(tasks._process_media_batch)
         self.assertIn('apply_download_info', source)
 
 

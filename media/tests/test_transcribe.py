@@ -834,11 +834,11 @@ class GroupTranscriptionTest(TestCase):
         from media import tasks
 
         self.assertIn(
-            'queue_transcription_if_enabled', inspect.getsource(tasks.process_media.func)
+            'queue_transcription_if_enabled', inspect.getsource(tasks._process_media)
         )
         self.assertIn(
             'queue_transcription_if_enabled',
-            inspect.getsource(tasks.process_media_batch.func),
+            inspect.getsource(tasks._process_media_batch),
         )
 
 

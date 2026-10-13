@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import threading
@@ -19,10 +20,12 @@ from media.processing import (
     download_direct,
     download_ytdlp,
     ensure_playable_video,
+    item_lock,
     prefetch_file,
     prefetch_direct,
     prefetch_ytdlp,
     process_files,
+    task_heartbeat,
     write_log,
 )
 from media.progress_tracker import update_progress
@@ -30,6 +33,8 @@ from media.service.config import get_ytdlp_args_for_type
 from media.service.download import prefetch_ytdlp_batch, download_ytdlp_batch
 from media.service.strategy import choose_download_strategy
 from media.utils import generate_slug, ensure_unique_slug
+
+_logger = logging.getLogger(__name__)
 
 
 def check_episode_limit():
@@ -406,7 +411,23 @@ def process_media(guid):
     Downloads occur in tmp-{guid}/ directory in the media folder, then moved to final
     slug-based directory after successful completion. This makes debugging easier and
     keeps download progress visible.
+
+    Only one task works on an item at a time (item_lock), and the item is kept alive
+    for the whole run - postprocessing included - so recover_stuck_items cannot mistake
+    a long conversion for a dead worker (task_heartbeat).
     """
+    with item_lock(guid) as acquired:
+        if not acquired:
+            # A second run in the same tmp-<guid> directory would delete and rewrite
+            # the files the first one is still converting
+            _logger.warning('Item %s is already being processed; skipping this run', guid)
+            return
+        with task_heartbeat([guid]):
+            _process_media(guid)
+
+
+def _process_media(guid):
+    """The process_media pipeline; runs with the item locked and kept alive."""
     try:
         item = MediaItem.objects.get(guid=guid)
     except MediaItem.DoesNotExist:
@@ -680,6 +701,15 @@ def process_media_batch(guids: List[str]):
     if not guids:
         return
 
+    # Kept alive for the whole run, like process_media; items created along the way
+    # (expanded playlists) are added as they appear
+    active_guids = set(guids)
+    with task_heartbeat(active_guids):
+        _process_media_batch(guids, active_guids)
+
+
+def _process_media_batch(guids, active_guids):
+    """The process_media_batch pipeline; ``active_guids`` collects the items it touches."""
     # Get initial items
     initial_items = {guid: MediaItem.objects.filter(guid=guid).first() for guid in guids}
     initial_items = {k: v for k, v in initial_items.items() if v is not None}
@@ -820,6 +850,7 @@ def process_media_batch(guids: List[str]):
                 item_tmp_dirs[item.guid] = tmp_dir
                 item_log_paths[item.guid] = log_path
                 guid_by_video_url[video_info.url] = item.guid
+                active_guids.add(item.guid)
 
                 write_log(batch_log_path, f'  Created: {item.title}')
 
@@ -1663,8 +1694,6 @@ def prefetch_for_approval(guid):
     until the item is approved. The notification is sent even when the prefetch fails:
     the title from the channel listing is enough to decide on.
     """
-    import logging
-
     try:
         item = MediaItem.objects.get(guid=guid)
     except MediaItem.DoesNotExist:
@@ -1676,7 +1705,7 @@ def prefetch_for_approval(guid):
     try:
         prefetch_ytdlp(item, None, None)
     except Exception as e:
-        logging.getLogger(__name__).warning('Prefetch for approval of %s failed: %s', guid, e)
+        _logger.warning('Prefetch for approval of %s failed: %s', guid, e)
 
     # _apply_prefetch_result saves the item; make sure a concurrent answer (approve or
     # reject from another device) is not overwritten and still gets no notification

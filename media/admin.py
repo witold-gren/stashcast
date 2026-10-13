@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
@@ -100,8 +101,25 @@ def _make_sync_action(max_videos):
     return sync_action
 
 
+class MediaGroupAdminForm(forms.ModelForm):
+    class Meta:
+        model = MediaGroup
+        fields = '__all__'
+
+    def clean(self):
+        cleaned = super().clean()
+        # "Notify on download" with nobody to notify would look switched on and do nothing
+        if cleaned.get('notify_on_download') and not cleaned.get('notify_users'):
+            self.add_error(
+                'notify_users', 'Pick at least one user to notify, or untick "notify on download".'
+            )
+        return cleaned
+
+
 @admin.register(MediaGroup)
 class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
+    form = MediaGroupAdminForm
+    filter_horizontal = ['notify_users']
     list_display = [
         'image_thumbnail',
         'name',
@@ -138,7 +156,10 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 ]
             },
         ),
-        ('Approval & notifications', {'fields': ['require_approval', 'notify_on_download']}),
+        (
+            'Approval & notifications',
+            {'fields': ['require_approval', 'notify_on_download', 'notify_users']},
+        ),
         ('Auto-delete', {'fields': ['auto_delete_enabled', 'auto_delete_after_days']}),
     ]
     actions = [
@@ -148,6 +169,18 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'transcribe_group_items',
         'delete_expired_items',
     ]
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        group = form.instance
+        # Allowed - uploads can be answered in the admin - but easy to miss
+        if group.require_approval and not group.notify_users.exists():
+            self.message_user(
+                request,
+                f'"{group.name}" asks before downloading but notifies nobody. New uploads '
+                f'will wait under "Awaiting Approval" in the admin.',
+                level=messages.WARNING,
+            )
 
     def auto_delete_display(self, obj):
         if not obj.auto_delete_enabled:

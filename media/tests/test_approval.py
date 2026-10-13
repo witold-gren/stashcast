@@ -277,8 +277,13 @@ class NotificationsTest(TestCase):
     def _sent_payloads(self):
         return [json.loads(call.args[1]) for call in self.send.call_args_list]
 
+    def _group(self, users=None, **fields):
+        group = MediaGroup.objects.create(name='G', **fields)
+        group.notify_users.set([self.admin] if users is None else users)
+        return group
+
     def test_approval_request_has_download_and_reject_buttons(self):
-        group = MediaGroup.objects.create(name='G', require_approval=True)
+        group = self._group(require_approval=True)
         item = awaiting_item(group, thumbnail_url='https://i.ytimg.com/x.jpg')
 
         self.assertEqual(notify_approval_request(item), 1)
@@ -291,25 +296,50 @@ class NotificationsTest(TestCase):
         self.assertTrue(check_approval_token(token, item.guid, 'approve'))
 
     def test_ready_notification_when_group_asks_for_it(self):
-        group = MediaGroup.objects.create(name='G', notify_on_download=True)
+        group = self._group(notify_on_download=True)
         item = awaiting_item(group, status=MediaItem.STATUS_READY, title='Episode')
 
         self.assertEqual(notify_download_ready_if_enabled(item), 1)
         self.assertIn('Episode', self._sent_payloads()[0]['title'])
 
     def test_no_ready_notification_when_group_requires_approval(self):
-        group = MediaGroup.objects.create(name='G', notify_on_download=True, require_approval=True)
+        group = self._group(notify_on_download=True, require_approval=True)
         item = awaiting_item(group, status=MediaItem.STATUS_READY)
 
         self.assertEqual(notify_download_ready_if_enabled(item), 0)
         self.send.assert_not_called()
 
     def test_no_ready_notification_when_switched_off(self):
-        group = MediaGroup.objects.create(name='G')
+        group = self._group()
         item = awaiting_item(group, status=MediaItem.STATUS_READY)
 
         self.assertEqual(notify_download_ready_if_enabled(item), 0)
         self.send.assert_not_called()
+
+    def test_only_the_groups_users_are_notified(self):
+        other = User.objects.create_superuser('other', 'o@test.com', 'password')
+        subscribe(other, endpoint='https://push.example.com/other')
+        group = self._group(users=[other], require_approval=True)
+
+        self.assertEqual(notify_approval_request(awaiting_item(group)), 1)
+        self.assertEqual(self.send.call_args.args[0].endpoint, 'https://push.example.com/other')
+
+    def test_nobody_is_notified_while_the_list_is_empty(self):
+        group = self._group(users=[], require_approval=True, notify_on_download=True)
+        item = awaiting_item(group)
+
+        self.assertEqual(notify_approval_request(item), 0)
+        item.status = MediaItem.STATUS_READY
+        self.assertEqual(notify_download_ready_if_enabled(item), 0)
+        self.send.assert_not_called()
+
+    def test_selected_demo_user_still_gets_nothing(self):
+        demo = User.objects.create_user('demo', password='password', is_staff=True)
+        demo.groups.add(Group.objects.create(name=DEMO_GROUP))
+        subscribe(demo, endpoint='https://push.example.com/demo')
+        group = self._group(users=[demo], require_approval=True)
+
+        self.assertEqual(notify_approval_request(awaiting_item(group)), 0)
 
     @override_settings(STASHCAST_PUSH_ENABLED=False)
     def test_nothing_sent_without_vapid_keys(self):
@@ -420,3 +450,45 @@ class ServiceWorkerTest(TestCase):
         content = response.content.decode()
         self.assertIn("addEventListener('push'", content)
         self.assertIn("addEventListener('notificationclick'", content)
+
+
+class GroupNotifyUsersAdminTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'admin@test.com', 'password')
+        self.client.login(username='admin', password='password')
+
+    def _post(self, **fields):
+        data = {
+            'name': 'Channel',
+            'slug': 'channel',
+            'download_type': 'audio',
+            'auto_delete_after_days': 90,
+        }
+        data.update(fields)
+        return self.client.post(reverse('admin:media_mediagroup_add'), data, follow=True)
+
+    def test_notify_on_download_needs_someone_to_notify(self):
+        response = self._post(notify_on_download='on')
+
+        self.assertContains(response, 'Pick at least one user to notify')
+        self.assertFalse(MediaGroup.objects.exists())
+
+    def test_users_are_saved(self):
+        self._post(notify_on_download='on', notify_users=[self.admin.pk])
+
+        group = MediaGroup.objects.get()
+        self.assertEqual(list(group.notify_users.all()), [self.admin])
+
+    def test_approval_without_users_saves_with_a_warning(self):
+        response = self._post(require_approval='on')
+
+        self.assertTrue(MediaGroup.objects.filter(require_approval=True).exists())
+        self.assertContains(response, 'notifies nobody')
+
+    def test_only_active_staff_can_be_picked(self):
+        User.objects.create_user('listener', password='password')
+
+        response = self.client.get(reverse('admin:media_mediagroup_add'))
+
+        self.assertContains(response, 'admin')
+        self.assertNotContains(response, '>listener<')

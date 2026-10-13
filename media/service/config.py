@@ -142,6 +142,7 @@ def parse_ytdlp_extra_args(args_string, base_opts):
     import shlex
 
     args_list = shlex.split(args_string)
+    audio_quality = None
 
     # Parse common yt-dlp arguments
     i = 0
@@ -173,7 +174,10 @@ def parse_ytdlp_extra_args(args_string, base_opts):
                 i += 1
         elif arg == '--audio-quality':
             if i + 1 < len(args_list):
-                # This needs to be combined with audio-format postprocessor
+                # Applied to the --audio-format postprocessor below, whichever order
+                # the two flags come in. Like the CLI, '128K' means 128 kbit/s and
+                # 0-10 is a VBR quality.
+                audio_quality = args_list[i + 1].strip().rstrip('kK')
                 i += 2
             else:
                 i += 1
@@ -305,6 +309,11 @@ def parse_ytdlp_extra_args(args_string, base_opts):
         else:
             # Skip unknown args
             i += 1
+
+    if audio_quality:
+        for pp in base_opts.get('postprocessors', []):
+            if pp.get('key') == 'FFmpegExtractAudio':
+                pp['preferredquality'] = audio_quality
 
     return base_opts
 

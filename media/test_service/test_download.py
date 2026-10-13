@@ -251,7 +251,8 @@ class DownloadServiceTest(TestCase):
             # Check that yt-dlp was called with correct options
             call_args = mock_ytdlp_class.call_args[0][0]
             self.assertIn('format', call_args)
-            self.assertEqual(call_args['format'], 'bestaudio/best')
+            # AAC first: converting it to m4a is a stream copy, Opus would be re-encoded
+            self.assertEqual(call_args['format'], 'bestaudio[ext=m4a]/bestaudio/best')
 
     @patch('media.service.download.yt_dlp.YoutubeDL')
     def test_download_ytdlp_format_spec_video(self, mock_ytdlp_class):
