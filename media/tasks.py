@@ -175,6 +175,7 @@ def _heartbeat_on_activity(signal_name, task, exc=None):
 
 
 _heartbeat_thread = None
+_heartbeat_stop = threading.Event()
 _heartbeat_thread_lock = threading.Lock()
 
 
@@ -196,7 +197,7 @@ def start_heartbeat_thread(interval_seconds=None):
     Returns:
         threading.Thread: The running heartbeat thread.
     """
-    global _heartbeat_thread
+    global _heartbeat_thread, _heartbeat_stop
 
     if interval_seconds is None:
         interval_seconds = max(5, settings.STASHCAST_WORKER_HEARTBEAT_STALE_SECONDS // 3)
@@ -206,16 +207,32 @@ def start_heartbeat_thread(interval_seconds=None):
         if _heartbeat_thread is not None and _heartbeat_thread.is_alive():
             return _heartbeat_thread
 
+        # A fresh event per thread, so stopping an old beat never stops its successor
+        stop = _heartbeat_stop = threading.Event()
+
         def beat():
-            while True:
+            while not stop.is_set():
                 touch_heartbeat(interval_seconds=0)
-                time.sleep(interval_seconds)
+                stop.wait(interval_seconds)
 
         _heartbeat_thread = threading.Thread(
             target=beat, name='stashcast-heartbeat', daemon=True
         )
         _heartbeat_thread.start()
         return _heartbeat_thread
+
+
+def stop_heartbeat_thread():
+    """Stop the heartbeat thread. A worker never does this; tests must, or the beat
+    outlives them and every later test sees a live worker."""
+    global _heartbeat_thread
+
+    with _heartbeat_thread_lock:
+        thread = _heartbeat_thread
+        _heartbeat_stop.set()
+        _heartbeat_thread = None
+    if thread is not None:
+        thread.join(timeout=5)
 
 
 @on_startup()

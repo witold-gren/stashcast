@@ -270,10 +270,10 @@ class HeartbeatSurvivesABusyWorkerTest(TestCase):
         self.addCleanup(lambda: self.path.exists() and self.path.unlink())
 
     def _stop_thread(self):
-        """Let the next test start a beat of its own."""
-        import media.tasks as tasks
+        """Stop the beat, so it does not keep later tests' worker looking alive."""
+        from media.tasks import stop_heartbeat_thread
 
-        tasks._heartbeat_thread = None
+        stop_heartbeat_thread()
 
     def test_task_activity_refreshes_the_heartbeat(self):
         from media.tasks import _heartbeat_on_activity, worker_is_alive
