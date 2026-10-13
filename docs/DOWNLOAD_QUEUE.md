@@ -121,6 +121,49 @@ behaving exactly as before.
 > A group needs only one field because it just expresses intent. See
 > [ARCHITECTURE.md](ARCHITECTURE.md) for why the item keeps both.
 
+## Approving uploads before they download
+
+Some channels publish far more than you want to listen to. Tick **Require approval** on
+the group (admin → Media groups → *Approval & notifications*) and the sync stops
+downloading on its own:
+
+1. A new upload is recorded as **Awaiting approval**. Only its title, description and
+   thumbnail are fetched, nothing is downloaded and nothing appears in any feed.
+2. A push notification shows the title and thumbnail with two buttons:
+   - **Download** starts the download right away (it skips the paced queue — you asked
+     for this one). Once it finishes it is in the group's feed like any other episode.
+   - **Reject** marks it **Rejected**. The record stays, without files, so the next sync
+     does not ask about the same upload again.
+3. On a phone without notification buttons (iPhone) tapping the notification opens the
+   item page, which has the same two buttons. The item list in the admin has *Approve* /
+   *Reject* bulk actions too, and the sidebar link **Awaiting Approval** lists what is
+   still open.
+
+The buttons in a notification keep working for 14 days and each one only does its own
+action on its own item. Push needs to be set up once, see
+[push notifications](HOME_SCREEN_APP.md#push-notifications). Without it the items still
+wait for approval — answer them from the admin.
+
+### Notify when a download is ready
+
+**Notify on download** sends a notification whenever a new item in the group finishes
+downloading. It is ignored while *Require approval* is on: there you already chose to
+download the item from a notification, and a second one would only repeat it.
+
+### Deleting old episodes automatically
+
+Under *Auto-delete*, tick **Auto delete enabled** and set **Auto delete after days**
+(default 90). Every night at 04:30 items in that group which were downloaded longer ago
+than that — ready or archived — are deleted together with their files. Groups without
+the tick are never touched. Rejected items are kept, they hold no files.
+
+The *Auto-delete expired items now* action on the group list runs the same cleanup on
+demand.
+
+A deleted item is gone from the database, so **Download ENTIRE channel** would fetch it
+again (or, with approval on, ask about it again). The regular sync only looks at the
+newest few uploads and does not reach that far back.
+
 ## Catching up on a channel
 
 The periodic sync only looks at the newest `STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS` uploads,

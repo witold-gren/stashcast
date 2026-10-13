@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from nanoid import generate
@@ -80,6 +81,35 @@ class MediaGroup(models.Model):
             'to anything added to this group without an explicit type of its own.'
         ),
     )
+
+    require_approval = models.BooleanField(
+        default=False,
+        help_text=(
+            'Ask before downloading new YouTube uploads. The sync only fetches the title, '
+            'description and thumbnail and sends a push notification with Download / '
+            'Reject buttons; nothing reaches the feed until you approve it.'
+        ),
+    )
+    notify_on_download = models.BooleanField(
+        default=False,
+        help_text=(
+            'Send a push notification when a new item in this group is ready. Ignored '
+            'while "require approval" is on - you already hear about every upload then.'
+        ),
+    )
+
+    auto_delete_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            'Delete items (files and database record) once they are older than the '
+            'number of days below, counted from when they were downloaded.'
+        ),
+    )
+    auto_delete_after_days = models.PositiveIntegerField(
+        default=90,
+        validators=[MinValueValidator(1)],
+        help_text='How many days a downloaded item is kept when auto-delete is on.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -130,6 +160,11 @@ class MediaItem(models.Model):
     STATUS_READY = 'READY'
     STATUS_ERROR = 'ERROR'
     STATUS_ARCHIVED = 'ARCHIVED'
+    # A channel upload in a group with require_approval: only metadata has been fetched
+    # and the user decides (via push notification or admin) whether to download it.
+    STATUS_AWAITING_APPROVAL = 'AWAITING_APPROVAL'
+    # Declined upload. Kept, without files, so the channel sync does not offer it again.
+    STATUS_REJECTED = 'REJECTED'
 
     STATUS_CHOICES = [
         (STATUS_QUEUED, _('Queued')),
@@ -139,6 +174,8 @@ class MediaItem(models.Model):
         (STATUS_READY, _('Ready')),
         (STATUS_ERROR, _('Error')),
         (STATUS_ARCHIVED, _('Archived')),
+        (STATUS_AWAITING_APPROVAL, _('Awaiting approval')),
+        (STATUS_REJECTED, _('Rejected')),
     ]
 
     # Statuses that mean a worker is actively holding this item. Used to detect items
@@ -218,6 +255,9 @@ class MediaItem(models.Model):
     content_path = models.CharField(max_length=500, blank=True)
     thumbnail_path = models.CharField(max_length=500, blank=True)
     subtitle_path = models.CharField(max_length=500, blank=True)
+    # Remote thumbnail reported by the source. Shown in approval notifications before
+    # anything is downloaded; the local thumbnail_path takes over once it is.
+    thumbnail_url = models.URLField(max_length=2048, blank=True)
 
     # Speech-to-text output. The text is kept on the record so it can be read and
     # searched here; transcript_path points at the WebVTT file served to podcast
@@ -322,6 +362,10 @@ class MediaItem(models.Model):
         if self.duration_seconds is None or self.file_duration_seconds is None:
             return None
         return abs(self.duration_seconds - self.file_duration_seconds)
+
+    @property
+    def is_awaiting_approval(self):
+        return self.status == self.STATUS_AWAITING_APPROVAL
 
     @property
     def is_queued(self):

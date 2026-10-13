@@ -109,6 +109,9 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         'download_type',
         'transcribe_new_downloads',
         'transcript_in_description',
+        'require_approval',
+        'notify_on_download',
+        'auto_delete_display',
         'item_count_display',
         'youtube_sync_display',
         'created_at',
@@ -117,24 +120,59 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
     search_fields = ['name', 'slug']
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ['created_at', 'image_preview', 'youtube_last_synced_at']
-    fields = [
-        'name',
-        'slug',
-        'image',
-        'image_preview',
-        'download_type',
-        'transcribe_new_downloads',
-        'transcript_in_description',
-        'youtube_channel_url',
-        'youtube_last_synced_at',
-        'created_at',
+    fieldsets = [
+        (
+            None,
+            {
+                'fields': [
+                    'name',
+                    'slug',
+                    'image',
+                    'image_preview',
+                    'download_type',
+                    'transcribe_new_downloads',
+                    'transcript_in_description',
+                    'youtube_channel_url',
+                    'youtube_last_synced_at',
+                    'created_at',
+                ]
+            },
+        ),
+        ('Approval & notifications', {'fields': ['require_approval', 'notify_on_download']}),
+        ('Auto-delete', {'fields': ['auto_delete_enabled', 'auto_delete_after_days']}),
     ]
     actions = [
         'sync_youtube_now',
         *(f'sync_youtube_last_{count}' for count in EXTRA_SYNC_VIDEO_COUNTS),
         'download_entire_channel',
         'transcribe_group_items',
+        'delete_expired_items',
     ]
+
+    def auto_delete_display(self, obj):
+        if not obj.auto_delete_enabled:
+            return '—'
+        return f'{obj.auto_delete_after_days} days'
+
+    auto_delete_display.short_description = 'Auto-delete'
+
+    def delete_expired_items(self, request, queryset):
+        """Run the daily auto-delete right now for the selected groups."""
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to delete items.')
+        from media.operations import cleanup_expired_group_items
+
+        enabled = queryset.filter(auto_delete_enabled=True)
+        if not enabled.exists():
+            self.message_user(request, 'None of the selected groups has auto-delete switched on.')
+            return
+
+        deleted = cleanup_expired_group_items(enabled)
+        self.message_user(
+            request, f"Deleted {deleted} item(s) past their group's retention period."
+        )
+
+    delete_expired_items.short_description = 'Auto-delete expired items now'
 
     def item_count_display(self, obj):
         return obj.items.count()
@@ -175,17 +213,23 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             )
             return
 
-        total = 0
+        queued = awaiting = 0
         for group in groups:
-            total += len(sync_group_channel(group, max_videos=max_videos))
+            items = sync_group_channel(group, max_videos=max_videos)
+            if group.require_approval:
+                awaiting += len(items)
+            else:
+                queued += len(items)
 
         depth = max_videos or settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS
-        self.message_user(
-            request,
+        message = (
             f'Checked the newest {depth} upload(s) of {len(groups)} channel(s): '
-            f'queued {total} new item(s). They are released a few at a time by the '
-            f'paced download queue.',
+            f'queued {queued} new item(s). They are released a few at a time by the '
+            f'paced download queue.'
         )
+        if awaiting:
+            message += f' {awaiting} new item(s) are awaiting your approval.'
+        self.message_user(request, message)
 
     def sync_youtube_now(self, request, queryset):
         self.run_channel_sync(request, queryset)
@@ -408,6 +452,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 'fields': [
                     'content_path',
                     'thumbnail_path',
+                    'thumbnail_url',
                     'subtitle_path',
                     'file_size',
                     'mime_type',
@@ -445,6 +490,8 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
     ]
 
     actions = [
+        'approve_items',
+        'reject_items',
         'refetch_items',
         'requeue_items',
         'refresh_publish_dates',
@@ -620,6 +667,44 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         )
 
     remove_from_download_queue.short_description = 'Remove from download queue' 
+
+    def approve_items(self, request, queryset):
+        """Download the selected items that are awaiting approval."""
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to approve items.')
+        from media.operations import approve_item
+
+        approved = sum(
+            approve_item(item)
+            for item in queryset.filter(status=MediaItem.STATUS_AWAITING_APPROVAL)
+        )
+        if not approved:
+            self.message_user(request, 'None of the selected items was awaiting approval.')
+            return
+        self.message_user(request, f'Downloading {approved} approved item(s).')
+
+    approve_items.short_description = 'Approve: download selected items'
+
+    def reject_items(self, request, queryset):
+        """Reject the selected items that are awaiting approval."""
+        if is_demo_readonly(request.user):
+            raise PermissionDenied('Demo users are not allowed to reject items.')
+        from media.operations import reject_item
+
+        rejected = sum(
+            reject_item(item)
+            for item in queryset.filter(status=MediaItem.STATUS_AWAITING_APPROVAL)
+        )
+        if not rejected:
+            self.message_user(request, 'None of the selected items was awaiting approval.')
+            return
+        self.message_user(
+            request,
+            f'Rejected {rejected} item(s). They are kept without files so the channel '
+            f'sync does not offer them again.',
+        )
+
+    reject_items.short_description = 'Reject selected items'
 
     def transcript_display(self, obj):
         """Where this item is in the transcription process, at a glance."""

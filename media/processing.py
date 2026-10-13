@@ -70,6 +70,8 @@ def _apply_prefetch_result(item, result, log_path):
     item.duration_seconds = result.duration_seconds
     item.extractor = result.extractor or ''
     item.external_id = result.external_id or ''
+    if result.thumbnail_url:
+        item.thumbnail_url = result.thumbnail_url
 
     # Keep the source platform's publication date so feeds show when the episode was
     # actually published, not when we happened to download it

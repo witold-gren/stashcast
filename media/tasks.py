@@ -13,6 +13,7 @@ from huey import crontab, signals
 from huey.contrib.djhuey import db_periodic_task, db_task, on_startup, signal
 
 from media.models import MediaItem
+from media.notifications import notify_approval_request, notify_download_ready_if_enabled
 from media.processing import (
     apply_download_info,
     download_direct,
@@ -543,6 +544,7 @@ def process_media(guid):
 
         # Transcribe when the item's group is set up for it
         queue_transcription_if_enabled(item, log_path)
+        notify_download_ready_if_enabled(item)
 
         # Generate summary if subtitles are available
         if item.subtitle_path and settings.STASHCAST_SUMMARY_SENTENCES > 0:
@@ -978,6 +980,7 @@ def process_media_batch(guids: List[str]):
                 clear_progress(guid)
 
                 queue_transcription_if_enabled(item, log_path)
+                notify_download_ready_if_enabled(item)
 
                 if item.subtitle_path and settings.STASHCAST_SUMMARY_SENTENCES > 0:
                     generate_summary(item.guid)
@@ -1649,3 +1652,52 @@ def sync_youtube_channels():
     from media.operations import sync_all_youtube_channels
 
     sync_all_youtube_channels(wait=False)
+
+
+@db_task(priority=PRIORITY_DOWNLOAD)
+def prefetch_for_approval(guid):
+    """
+    Fetch the metadata of an upload awaiting approval and ask the user about it.
+
+    Only the title, description, thumbnail URL etc. are fetched - nothing is downloaded
+    until the item is approved. The notification is sent even when the prefetch fails:
+    the title from the channel listing is enough to decide on.
+    """
+    import logging
+
+    try:
+        item = MediaItem.objects.get(guid=guid)
+    except MediaItem.DoesNotExist:
+        return
+    if item.status != MediaItem.STATUS_AWAITING_APPROVAL:
+        return
+
+    listing_title = item.title
+    try:
+        prefetch_ytdlp(item, None, None)
+    except Exception as e:
+        logging.getLogger(__name__).warning('Prefetch for approval of %s failed: %s', guid, e)
+
+    # _apply_prefetch_result saves the item; make sure a concurrent answer (approve or
+    # reject from another device) is not overwritten and still gets no notification
+    item.refresh_from_db()
+    if item.status != MediaItem.STATUS_AWAITING_APPROVAL:
+        return
+    if not item.title or item.title == 'content':
+        item.title = listing_title
+        item.save(update_fields=['title', 'updated_at'])
+
+    notify_approval_request(item)
+
+
+@db_periodic_task(crontab(minute='30', hour='4'))
+def cleanup_expired_media():
+    """
+    Periodic task: delete downloaded items past their group's retention period.
+
+    Runs daily at 04:30. Only groups with auto_delete_enabled are touched; see
+    operations.cleanup_expired_group_items.
+    """
+    from media.operations import cleanup_expired_group_items
+
+    cleanup_expired_group_items()

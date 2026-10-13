@@ -18,7 +18,7 @@ Including another URLconf
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path, re_path
+from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 
 from media.feeds import ArchiveFeed, AudioFeed, CombinedFeed, GroupFeed, VideoFeed
@@ -32,13 +32,17 @@ from media.views import (
     grid_view,
     home_view,
     item_archive_view,
+    item_decision_view,
     item_detail_view,
     item_refetch_view,
     item_regenerate_summary_view,
     item_unarchive_view,
     list_view,
     manifest_view,
+    notifications_view,
     preferences_view,
+    push_decision_view,
+    service_worker_view,
     stash_progress_view,
     stash_status_stream,
     stash_view,
@@ -58,6 +62,10 @@ urlpatterns = [
     # "Add to Home Screen": the manifest, plus the icon at the well-known path older
     # iPhones look for when a page offers no <link rel="apple-touch-icon">
     path('manifest.webmanifest', manifest_view, name='manifest'),
+    # Push notifications: the service worker must live at the root so its scope is the
+    # whole site; webpush.urls saves the subscriptions of each device
+    path('sw.js', service_worker_view, name='service_worker_root'),
+    path('webpush/', include('webpush.urls')),
     path(
         'apple-touch-icon.png',
         RedirectView.as_view(url='/static/media/icons/icon-180.png', permanent=True),
@@ -100,6 +108,12 @@ urlpatterns = [
         item_regenerate_summary_view,
         name='item_regenerate_summary',
     ),
+    re_path(
+        r'^admin/tools/item/(?P<guid>[^/]+)/(?P<action>approve|reject)/$',
+        item_decision_view,
+        name='item_decision',
+    ),
+    path('admin/tools/notifications/', notifications_view, name='notifications'),
     path('admin/tools/preferences/', preferences_view, name='preferences'),
     # Redirect admin index to grid view (must come before admin.site.urls)
     re_path(r'^admin/$', RedirectView.as_view(url='/admin/tools/grid/', permanent=False)),
@@ -109,6 +123,12 @@ urlpatterns = [
     path('stash/', stash_view, name='stash'),
     path('stash/<str:guid>/progress/', stash_progress_view, name='stash_progress'),
     path('stash/<str:guid>/stream/', stash_status_stream, name='stash_status_stream'),
+    # Download / Reject buttons of a push notification (signed token, no session)
+    re_path(
+        r'^push/item/(?P<guid>[^/]+)/(?P<action>approve|reject)/$',
+        push_decision_view,
+        name='push_decision',
+    ),
     path('feeds/audio.xml', AudioFeed(), name='audio_feed'),
     path('feeds/video.xml', VideoFeed(), name='video_feed'),
     path('feeds/combined.xml', CombinedFeed(), name='combined_feed'),

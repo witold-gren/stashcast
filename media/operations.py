@@ -288,14 +288,17 @@ def sync_group_channel(group, max_videos=None, wait=False, logger=None, immediat
         if already_present:
             continue
         log(f'New upload: {video.title or video.url}')
-        item = stash_url(
-            video.url,
-            requested_type=group.download_type,
-            wait=wait,
-            logger=logger,
-            group=group,
-            queued=not immediate,
-        )
+        if group.require_approval:
+            item = create_awaiting_item(video, group, wait=wait, logger=logger)
+        else:
+            item = stash_url(
+                video.url,
+                requested_type=group.download_type,
+                wait=wait,
+                logger=logger,
+                group=group,
+                queued=not immediate,
+            )
         new_items.append(item)
 
     group.youtube_last_synced_at = timezone.now()
@@ -303,6 +306,130 @@ def sync_group_channel(group, max_videos=None, wait=False, logger=None, immediat
 
     log(f'Group "{group.name}": {len(new_items)} new upload(s) stashed')
     return new_items
+
+
+def create_awaiting_item(video, group, wait=False, logger=None):
+    """
+    Record a channel upload that needs the user's approval before it is downloaded.
+
+    Only metadata is fetched (prefetch_for_approval), which then sends the push
+    notification with Download / Reject buttons. The title from the channel listing is
+    stored up front so the item is recognisable even if that prefetch fails.
+
+    Args:
+        video: ChannelVideo from list_channel_videos
+        group: MediaGroup the upload belongs to
+        wait: If True, fetch the metadata synchronously (used by CLI)
+        logger: Optional callable(message) for logging
+
+    Returns:
+        MediaItem: The new item, in STATUS_AWAITING_APPROVAL
+    """
+    from media.tasks import prefetch_for_approval
+
+    item = MediaItem.objects.create(
+        source_url=video.url,
+        requested_type=resolve_requested_type(group.download_type, group),
+        slug='pending',
+        title=video.title or '',
+        external_id=video.external_id or '',
+        group=group,
+        status=MediaItem.STATUS_AWAITING_APPROVAL,
+    )
+    if logger:
+        logger(f'Awaiting approval: {item.guid}')
+
+    if wait:
+        prefetch_for_approval.call_local(item.guid)
+    else:
+        prefetch_for_approval(item.guid)
+    return item
+
+
+def approve_item(item):
+    """
+    Download an item that was waiting for approval.
+
+    It skips the paced queue: the user asked for this one item, so it starts right away.
+
+    Returns:
+        bool: True when the download was started, False when the item was not
+        awaiting approval (already answered, e.g. a second tap on the notification).
+    """
+    from media.tasks import process_media
+
+    updated = MediaItem.objects.filter(
+        guid=item.guid, status=MediaItem.STATUS_AWAITING_APPROVAL
+    ).update(status=MediaItem.STATUS_PREFETCHING, error_message='')
+    if not updated:
+        return False
+    item.refresh_from_db()
+    process_media(item.guid)
+    return True
+
+
+def reject_item(item):
+    """
+    Decline an item that was waiting for approval.
+
+    The record stays (without files) as STATUS_REJECTED so the channel sync does not
+    offer the same upload again.
+
+    Returns:
+        bool: True when the item was rejected, False when it was not awaiting approval.
+    """
+    updated = MediaItem.objects.filter(
+        guid=item.guid, status=MediaItem.STATUS_AWAITING_APPROVAL
+    ).update(status=MediaItem.STATUS_REJECTED)
+    if updated:
+        item.refresh_from_db()
+    return bool(updated)
+
+
+def cleanup_expired_group_items(groups=None, logger=None):
+    """
+    Delete downloaded items older than their group's auto_delete_after_days.
+
+    Only groups with auto_delete_enabled are touched. Ready and archived items are
+    deleted together with their files (see media.signals.cleanup_media_files); rejected
+    items are kept because they stop the channel sync from offering them again.
+
+    Args:
+        groups: Optional MediaGroup queryset/iterable to limit the cleanup to
+        logger: Optional callable(message) for logging
+
+    Returns:
+        int: Number of items deleted.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from media.models import MediaGroup
+
+    if groups is None:
+        groups = MediaGroup.objects.all()
+
+    now = timezone.now()
+    total = 0
+    for group in groups:
+        if not group.auto_delete_enabled:
+            continue
+        cutoff = now - timedelta(days=group.auto_delete_after_days)
+        expired = group.items.filter(
+            status__in=(MediaItem.STATUS_READY, MediaItem.STATUS_ARCHIVED),
+            downloaded_at__lt=cutoff,
+        )
+        # The pre_delete signal removes each item's directory, also for bulk deletes
+        _, per_model = expired.delete()
+        count = per_model.get(MediaItem._meta.label, 0)
+        if count and logger:
+            logger(
+                f'Group "{group.name}": deleted {count} item(s) older than '
+                f'{group.auto_delete_after_days} days'
+            )
+        total += count
+    return total
 
 
 def sync_all_youtube_channels(wait=False, logger=None, immediate=False):

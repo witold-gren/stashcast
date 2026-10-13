@@ -88,6 +88,8 @@ class PrefetchResult:
     file_extension: Optional[str] = None
     # Original publication date on the source platform (not the download date)
     publish_date: Optional[datetime] = None
+    # Remote thumbnail URL reported by the source, if any
+    thumbnail_url: Optional[str] = None
     # Multi-item support
     entries: List[EntryInfo] = field(default_factory=list)
     is_multiple: bool = False
@@ -333,6 +335,7 @@ def _prefetch_ytdlp_inner(url, logger=None):
         result.external_id = info.get('id', '')
         result.webpage_url = info.get('webpage_url', url)
         result.publish_date = parse_publish_date(info)
+        result.thumbnail_url = info.get('thumbnail')
 
         # Check for video/audio streams
         formats = info.get('formats', [])

@@ -1330,3 +1330,102 @@ def item_unarchive_view(request, guid):
         messages.error(request, 'Only archived items can be unarchived.')
 
     return redirect('item_detail', guid=guid)
+
+
+def _decide_item(item, action):
+    """Apply an approval decision; returns True when the item changed."""
+    from media.operations import approve_item, reject_item
+
+    return approve_item(item) if action == 'approve' else reject_item(item)
+
+
+@staff_member_required
+@require_http_methods(['POST'])
+def item_decision_view(request, guid, action):
+    """Download (approve) or reject an item awaiting approval, from the item page."""
+    from django.contrib import messages
+    from django.core.exceptions import PermissionDenied
+
+    from media.admin import is_demo_readonly
+
+    if is_demo_readonly(request.user):
+        raise PermissionDenied('Demo users are not allowed to approve or reject items.')
+
+    item = get_object_or_404(MediaItem, guid=guid)
+    label = item.title or item.guid
+    if not _decide_item(item, action):
+        messages.error(request, 'This item is no longer awaiting approval.')
+    elif action == 'approve':
+        messages.success(request, f'Downloading: {label}')
+    else:
+        messages.success(request, f'Rejected: {label}')
+
+    return redirect('item_detail', guid=guid)
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def push_decision_view(request, guid, action):
+    """Download / Reject button pressed in a push notification.
+
+    Called by the service worker, which cannot rely on a session or CSRF token, so the
+    request carries a signed token instead (media.notifications.make_approval_token).
+    The token only allows this one action on this one item.
+    """
+    from media.notifications import check_approval_token
+
+    if not check_approval_token(request.GET.get('token'), guid, action):
+        return JsonResponse({'error': 'Invalid or expired token'}, status=403)
+
+    item = get_object_or_404(MediaItem, guid=guid)
+    changed = _decide_item(item, action)
+    return JsonResponse(
+        {'changed': changed, 'status': item.status, 'title': item.title or item.source_url}
+    )
+
+
+def service_worker_view(request):
+    """The service worker that shows push notifications and handles their buttons.
+
+    Served from the site root (not /static/) so its scope covers the whole site.
+    """
+    response = render(request, 'media/sw.js', content_type='application/javascript')
+    # Browsers re-check the worker on navigation; never let a proxy pin an old one
+    response['Cache-Control'] = 'no-cache'
+    return response
+
+
+@staff_member_required
+@require_http_methods(['GET', 'POST'])
+def notifications_view(request):
+    """Turn push notifications on for this device and send a test one."""
+    from django.contrib import messages
+
+    from media.notifications import push_enabled, send_to_staff
+
+    if request.method == 'POST':
+        sent = send_to_staff(
+            {
+                'title': 'StashCast',
+                'body': 'Test notification - push works on this device.',
+                'icon': static('media/icons/icon-192.png'),
+                'url': request.path,
+            },
+            users=[request.user],
+        )
+        if sent:
+            messages.success(request, f'Test notification sent to {sent} device(s).')
+        else:
+            messages.error(request, 'No device received the notification.')
+        return redirect('notifications')
+
+    context = {
+        **admin.site.each_context(request),
+        'push_enabled': push_enabled(),
+        'vapid_public_key': settings.WEBPUSH_SETTINGS['VAPID_PUBLIC_KEY'],
+        'device_count': request.user.webpush_info.count(),
+        'awaiting_count': MediaItem.objects.filter(
+            status=MediaItem.STATUS_AWAITING_APPROVAL
+        ).count(),
+    }
+    return render(request, 'admin/notifications.html', context)

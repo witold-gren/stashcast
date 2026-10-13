@@ -70,6 +70,37 @@
     .dark .status-processing { color: #ffc107; }
     .dark .status-archived { color: #94a3b8; }
     .dark .status-queued { color: #a89bff; }
+    .status-awaiting { background: color-mix(in srgb, #fd7e14 20%, transparent); color: #c25e00; }
+    .status-rejected { background: color-mix(in srgb, #6c757d 20%, transparent); color: var(--sc-muted); }
+    .dark .status-awaiting { color: #ffa94d; }
+    .approval-panel {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+        margin: 0 0 20px;
+        border: 1px solid #fd7e14;
+        border-radius: 8px;
+        background: color-mix(in srgb, #fd7e14 8%, transparent);
+    }
+    .approval-panel p { margin: 0; flex: 1 1 220px; }
+    .approval-panel form { margin: 0; }
+    .approval-panel button {
+        padding: 10px 22px;
+        border-radius: 6px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid var(--sc-border);
+        background: var(--sc-panel-bg);
+        color: var(--sc-panel-fg);
+    }
+    .approval-panel .btn-approve {
+        background: var(--sc-primary);
+        border-color: var(--sc-primary);
+        color: var(--sc-primary-fg);
+    }
     .action-bar .separator {
         width: 1px;
         height: 20px;
@@ -178,11 +209,29 @@
         <span class="status-badge status-downloading">{% trans "Downloading" %}</span>
     {% elif item.status == 'QUEUED' %}
         <span class="status-badge status-queued">{% trans "Queued" %}</span>
+    {% elif item.status == 'AWAITING_APPROVAL' %}
+        <span class="status-badge status-awaiting">{% trans "Awaiting approval" %}</span>
+    {% elif item.status == 'REJECTED' %}
+        <span class="status-badge status-rejected">{% trans "Rejected" %}</span>
     {% else %}
         <span class="status-badge status-prefetching">{% trans "Prefetching" %}</span>
     {% endif %}
 
     <h1>{{ item.title|default:"Untitled" }}</h1>
+
+    {% if item.is_awaiting_approval %}
+        <div class="approval-panel">
+            <p>{% trans "New upload from the channel. Download it into the feed, or reject it?" %}</p>
+            <form method="post" action="{% url 'item_decision' item.guid 'approve' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-approve">{% trans "Download" %}</button>
+            </form>
+            <form method="post" action="{% url 'item_decision' item.guid 'reject' %}">
+                {% csrf_token %}
+                <button type="submit">{% trans "Reject" %}</button>
+            </form>
+        </div>
+    {% endif %}
 
     <div class="action-bar">
 
@@ -202,10 +251,12 @@
         {% endif %}
         <a href="{% url 'admin:media_mediaitem_delete' item.guid %}" class="btn btn-danger">{% trans "Delete" %}</a>
 
-        <form method="post" action="{% url 'item_refetch' item.guid %}">
-            {% csrf_token %}
-            <button type="submit" class="btn">{% trans "Refetch" %}</button>
-        </form>
+        {% if not item.is_awaiting_approval %}
+            <form method="post" action="{% url 'item_refetch' item.guid %}">
+                {% csrf_token %}
+                <button type="submit" class="btn">{% trans "Refetch" %}</button>
+            </form>
+        {% endif %}
         {% if item.subtitle_path %}
             <form method="post" action="{% url 'item_regenerate_summary' item.guid %}">
                 {% csrf_token %}
@@ -253,6 +304,8 @@
 
     {% if item.thumbnail_path and thumbnail_url %}
         <img src="{{ thumbnail_url }}" alt="{{ item.title }}" class="thumbnail">
+    {% elif item.thumbnail_url %}
+        <img src="{{ item.thumbnail_url }}" alt="{{ item.title }}" class="thumbnail" referrerpolicy="no-referrer">
     {% endif %}
 
     {% if item.summary %}

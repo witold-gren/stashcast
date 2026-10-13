@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'huey.contrib.djhuey',
     'bx_django_utils',
     'huey_monitor',
+    'webpush',
 ]
 
 UNFOLD = {
@@ -104,6 +105,11 @@ UNFOLD = {
                         'icon': 'rss_feed',
                     },
                     {
+                        'title': 'Notifications',
+                        'link': '/admin/tools/notifications/',
+                        'icon': 'notifications',
+                    },
+                    {
                         'title': 'About',
                         'link': '/admin/tools/preferences/',
                         'icon': 'info',
@@ -122,6 +128,11 @@ UNFOLD = {
                         'title': 'Media Items',
                         'link': '/admin/media/mediaitem/',
                         'icon': 'play_circle',
+                    },
+                    {
+                        'title': 'Awaiting Approval',
+                        'link': '/admin/media/mediaitem/?status__exact=AWAITING_APPROVAL',
+                        'icon': 'pending_actions',
                     },
                 ],
             },
@@ -322,6 +333,20 @@ STASHCAST_PWA_SHORT_NAME = env('STASHCAST_PWA_SHORT_NAME', default='StashCast')
 STASHCAST_PWA_START_URL = env('STASHCAST_PWA_START_URL', default='/')
 STASHCAST_PWA_THEME_COLOR = env('STASHCAST_PWA_THEME_COLOR', default='#0f172a')
 STASHCAST_PWA_BACKGROUND_COLOR = env('STASHCAST_PWA_BACKGROUND_COLOR', default='#0a1120')
+
+# Web push notifications (django-webpush). Generate a key pair once with
+# `vapid --gen` + `vapid --applicationServerKey` (see docs/HOME_SCREEN_APP.md).
+# Without both keys push stays off and nothing is ever sent.
+WEBPUSH_SETTINGS = {
+    'VAPID_PUBLIC_KEY': env('STASHCAST_VAPID_PUBLIC_KEY', default=''),
+    'VAPID_PRIVATE_KEY': env('STASHCAST_VAPID_PRIVATE_KEY', default=''),
+    'VAPID_ADMIN_EMAIL': env('STASHCAST_VAPID_ADMIN_EMAIL', default='admin@localhost'),
+}
+STASHCAST_PUSH_ENABLED = bool(
+    WEBPUSH_SETTINGS['VAPID_PUBLIC_KEY'] and WEBPUSH_SETTINGS['VAPID_PRIVATE_KEY']
+)
+# How long the push service keeps a notification for a phone that is offline
+STASHCAST_PUSH_TTL_SECONDS = env.int('STASHCAST_PUSH_TTL_SECONDS', default=24 * 3600)
 
 # Default yt-dlp args optimized for mobile playback
 # Audio: AAC codec in M4A container is widely supported

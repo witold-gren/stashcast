@@ -77,10 +77,56 @@ behind Caddy, so this is already the case.
 **Updating the icon.** iOS caches it against the home-screen entry. After changing the
 artwork, delete the icon and add it again — a reload will not update it.
 
-**No offline mode.** There is no service worker, deliberately: the app streams media from
-the server, so there is nothing useful to do without a connection. Opening it with no
-network shows Safari's error page.
+**No offline mode.** The service worker (`/sw.js`) only handles push notifications, it
+caches nothing: the app streams media from the server, so there is nothing useful to do
+without a connection. Opening it with no network shows Safari's error page.
 
 **Splash screens** are not configured. iOS needs one image per device resolution, with an
 exact media query for each, and shows a blank screen tinted with the background colour
 when none matches — which is what happens here, briefly.
+
+## Push notifications
+
+Groups can ask before downloading a new upload, or announce a finished download (see
+[group options](DOWNLOAD_QUEUE.md#approving-uploads-before-they-download)). Both arrive as
+push notifications through `django-webpush`.
+
+### 1. Generate the keys (once)
+
+```bash
+pip install py-vapid   # already installed with the requirements
+vapid --gen                    # writes private_key.pem and public_key.pem
+vapid --applicationServerKey   # prints the public key to use below
+```
+
+### 2. Configure `.env`
+
+```bash
+STASHCAST_VAPID_PUBLIC_KEY=BAvS...        # the "Application Server Key" printed above
+STASHCAST_VAPID_PRIVATE_KEY=/data/private_key.pem
+STASHCAST_VAPID_ADMIN_EMAIL=you@example.com
+```
+
+`STASHCAST_VAPID_PRIVATE_KEY` is either the path to `private_key.pem` or its content on a
+single line, without the `-----BEGIN/END-----` lines:
+
+```bash
+grep -v '^-----' private_key.pem | tr -d '\n'
+```
+
+Restart StashCast (web and worker). Keep the keys: new ones invalidate every device that
+subscribed with the old ones.
+
+### 3. Turn them on per device
+
+Open **Tools → Notifications** on the phone, tap **Enable on this device** and allow
+notifications. **Send test notification** checks the whole chain. Every staff account
+receives notifications on all of its subscribed devices.
+
+| | Android (Chrome) | iPhone |
+|---|---|---|
+| Where | browser or installed app | only the app added to the Home Screen (iOS 16.4+) |
+| Download / Reject buttons | in the notification | not supported by iOS — tapping opens the item page with the buttons |
+
+Everything needs HTTPS. Without the keys the notification options on a group still save,
+but nothing is sent.

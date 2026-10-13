@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-02-22 16:33+0000\n"
+"POT-Creation-Date: 2026-10-12 17:25+0000\n"
 "PO-Revision-Date: 2026-01-12 22:00+0000\n"
 "Last-Translator: StashCast Team\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,56 +18,84 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: media/models.py:27 media/templates/admin/item_detail.html:178
-msgid "Prefetching"
-msgstr "Preparando"
-
-#: media/models.py:28 media/templates/admin/item_detail.html:176
-msgid "Downloading"
-msgstr "Baixando"
-
-#: media/models.py:29 media/templates/admin/admin_stash_progress.html:197
-#: media/templates/admin/item_detail.html:174
-msgid "Processing"
-msgstr "Processando"
-
-#: media/models.py:30 media/templates/admin/item_detail.html:168
-msgid "Ready"
-msgstr "Pronto"
-
-#: media/models.py:31 media/templates/admin/item_detail.html:172
-msgid "Error"
-msgstr "Erro"
-
-#: media/models.py:32 media/templates/admin/item_detail.html:170
-#: media/templates/admin/preferences.html:169
-msgid "Archived"
-msgstr "Arquivado"
-
-#: media/models.py:40 media/models.py:51
+#: media/models.py:52 media/models.py:190 media/models.py:201
 #: media/templates/admin/bookmarklet.html:200
 #: media/templates/admin/grid_view.html:209
-#: media/templates/admin/grid_view.html:243
+#: media/templates/admin/grid_view.html:252
 #: media/templates/admin/list_view.html:250
-#: media/templates/admin/list_view.html:287
+#: media/templates/admin/list_view.html:296
 #: media/templates/admin/preferences.html:161
 msgid "Audio"
 msgstr "Áudio"
 
-#: media/models.py:41 media/models.py:52
+#: media/models.py:53 media/models.py:191 media/models.py:202
 #: media/templates/admin/admin_stash_form.html:288
 #: media/templates/admin/bookmarklet.html:201
 #: media/templates/admin/grid_view.html:210
-#: media/templates/admin/grid_view.html:245
+#: media/templates/admin/grid_view.html:254
 #: media/templates/admin/list_view.html:251
-#: media/templates/admin/list_view.html:289
+#: media/templates/admin/list_view.html:298
 #: media/templates/admin/preferences.html:165
 msgid "Video"
 msgstr "Vídeo"
 
-#: media/models.py:50 media/templates/admin/bookmarklet.html:199
+#: media/models.py:170 media/templates/admin/item_detail.html:211
+msgid "Queued"
+msgstr "Na fila"
+
+#: media/models.py:171 media/templates/admin/item_detail.html:217
+msgid "Prefetching"
+msgstr "Preparando"
+
+#: media/models.py:172 media/templates/admin/item_detail.html:209
+msgid "Downloading"
+msgstr "Baixando"
+
+#: media/models.py:173 media/templates/admin/admin_stash_progress.html:197
+#: media/templates/admin/item_detail.html:207
+msgid "Processing"
+msgstr "Processando"
+
+#: media/models.py:174 media/templates/admin/item_detail.html:201
+msgid "Ready"
+msgstr "Pronto"
+
+#: media/models.py:175 media/templates/admin/item_detail.html:205
+msgid "Error"
+msgstr "Erro"
+
+#: media/models.py:176 media/templates/admin/item_detail.html:203
+#: media/templates/admin/preferences.html:169
+msgid "Archived"
+msgstr "Arquivado"
+
+#: media/models.py:177 media/templates/admin/item_detail.html:213
+msgid "Awaiting approval"
+msgstr "Aguardando aprovação"
+
+#: media/models.py:178 media/templates/admin/item_detail.html:215
+msgid "Rejected"
+msgstr "Rejeitado"
+
+#: media/models.py:200 media/templates/admin/bookmarklet.html:199
 msgid "Auto"
 msgstr "Auto"
+
+#: media/models.py:287
+msgid "Waiting"
+msgstr "Aguardando"
+
+#: media/models.py:288
+msgid "Transcribing"
+msgstr "Transcrevendo"
+
+#: media/models.py:289
+msgid "Done"
+msgstr "Concluído"
+
+#: media/models.py:290
+msgid "Failed"
+msgstr "Falhou"
 
 #: media/templates/admin/admin_spotify_confirm.html:5
 msgid "Spotify"
@@ -146,7 +174,8 @@ msgid "Enter a custom URL"
 msgstr "Insira uma URL personalizada"
 
 #: media/templates/admin/admin_spotify_confirm.html:422
-#: media/templates/admin/item_detail.html:214
+#: media/templates/admin/item_detail.html:227
+#: media/templates/admin/item_detail.html:269
 msgid "Download"
 msgstr "Baixar"
 
@@ -185,7 +214,7 @@ msgid "Media type:"
 msgstr "Tipo de mídia:"
 
 #: media/templates/admin/admin_stash_confirm_multiple.html:198
-#: media/templates/admin/admin_stash_form.html:328
+#: media/templates/admin/admin_stash_form.html:345
 #: media/templates/admin/admin_stash_progress.html:223
 #: media/templates/media/stash_progress.html:292
 msgid "Title"
@@ -261,19 +290,44 @@ msgstr "Apenas áudio"
 msgid "Auto-detect will determine if the content is audio or video"
 msgstr "A detecção automática determinará se o conteúdo é áudio ou vídeo"
 
-#: media/templates/admin/admin_stash_form.html:298
+#: media/templates/admin/admin_stash_form.html:294
+#: media/templates/admin/grid_view.html:267
+msgid "Group"
+msgstr "Grupo"
+
+#: media/templates/admin/admin_stash_form.html:296
+msgid "— No group —"
+msgstr "— Sem grupo —"
+
+#: media/templates/admin/admin_stash_form.html:301
+msgid "Optional. Assign the download to a group, or create a new one below."
+msgstr "Opcional. Atribua o download a um grupo ou crie um novo abaixo."
+
+#: media/templates/admin/admin_stash_form.html:305
+msgid "Or type a new group name (e.g. Lessons, Kitchen)"
+msgstr "Ou digite o nome de um novo grupo (ex.: Aulas, Cozinha)"
+
+#: media/templates/admin/admin_stash_form.html:307
+msgid ""
+"If filled in, a new group is created (or reused) and the existing selection "
+"above is ignored."
+msgstr ""
+"Se preenchido, um novo grupo é criado (ou reutilizado) e a seleção acima é "
+"ignorada."
+
+#: media/templates/admin/admin_stash_form.html:315
 msgid "Advanced Options"
 msgstr "Opções avançadas"
 
-#: media/templates/admin/admin_stash_form.html:299
+#: media/templates/admin/admin_stash_form.html:316
 msgid "Single URL"
 msgstr "URL única"
 
-#: media/templates/admin/admin_stash_form.html:302
+#: media/templates/admin/admin_stash_form.html:319
 msgid "Bulk Download (Multiple URLs)"
 msgstr "Download em massa (Múltiplas URLs)"
 
-#: media/templates/admin/admin_stash_form.html:311
+#: media/templates/admin/admin_stash_form.html:328
 msgid ""
 "Enter one URL per line. When bulk URLs are provided, the single URL field "
 "above is ignored. Each URL will be queued as a separate download."
@@ -282,44 +336,44 @@ msgstr ""
 "URL única acima é ignorado. Cada URL será enfileirada como um download "
 "separado."
 
-#: media/templates/admin/admin_stash_form.html:317
+#: media/templates/admin/admin_stash_form.html:334
 msgid "Add to StashCast"
 msgstr "Adicionar ao StashCast"
 
-#: media/templates/admin/admin_stash_form.html:324
+#: media/templates/admin/admin_stash_form.html:341
 msgid "Recent Items"
 msgstr "Itens recentes"
 
-#: media/templates/admin/admin_stash_form.html:329
+#: media/templates/admin/admin_stash_form.html:346
 msgid "Type"
 msgstr "Tipo"
 
-#: media/templates/admin/admin_stash_form.html:330
+#: media/templates/admin/admin_stash_form.html:347
 #: media/templates/admin/admin_stash_progress.html:209
 #: media/templates/admin/preferences.html:152
 #: media/templates/media/stash_progress.html:278
 msgid "Status"
 msgstr "Status"
 
-#: media/templates/admin/admin_stash_form.html:331
+#: media/templates/admin/admin_stash_form.html:348
 msgid "Created"
 msgstr "Criado"
 
-#: media/templates/admin/admin_stash_form.html:332
+#: media/templates/admin/admin_stash_form.html:349
 msgid "Actions"
 msgstr "Ações"
 
-#: media/templates/admin/admin_stash_form.html:345
+#: media/templates/admin/admin_stash_form.html:362
 #: media/templates/admin/preferences.html:182
 #: media/templates/admin/preferences.html:245
 msgid "ago"
 msgstr "atrás"
 
-#: media/templates/admin/admin_stash_form.html:347
+#: media/templates/admin/admin_stash_form.html:364
 msgid "View"
 msgstr "Ver"
 
-#: media/templates/admin/admin_stash_form.html:349
+#: media/templates/admin/admin_stash_form.html:366
 msgid "Preview"
 msgstr "Visualizar"
 
@@ -575,6 +629,7 @@ msgstr "Conteúdo somente de áudio para ouvir em movimento"
 #: media/templates/admin/feed_links.html:244
 #: media/templates/admin/feed_links.html:265
 #: media/templates/admin/feed_links.html:286
+#: media/templates/admin/feed_links.html:316
 msgid "Subscribe URL:"
 msgstr "URL de inscrição:"
 
@@ -582,18 +637,21 @@ msgstr "URL de inscrição:"
 #: media/templates/admin/feed_links.html:247
 #: media/templates/admin/feed_links.html:268
 #: media/templates/admin/feed_links.html:289
+#: media/templates/admin/feed_links.html:319
 msgid "Copy"
 msgstr "Copiar"
 
 #: media/templates/admin/feed_links.html:230
 #: media/templates/admin/feed_links.html:251
 #: media/templates/admin/feed_links.html:272
+#: media/templates/admin/feed_links.html:323
 msgid "Grid View"
 msgstr "Visualização em grade"
 
 #: media/templates/admin/feed_links.html:231
 #: media/templates/admin/feed_links.html:252
 #: media/templates/admin/feed_links.html:273
+#: media/templates/admin/feed_links.html:324
 msgid "List View"
 msgstr "Visualização em lista"
 
@@ -601,6 +659,7 @@ msgstr "Visualização em lista"
 #: media/templates/admin/feed_links.html:253
 #: media/templates/admin/feed_links.html:274
 #: media/templates/admin/feed_links.html:293
+#: media/templates/admin/feed_links.html:325
 msgid "View XML"
 msgstr "Ver XML"
 
@@ -608,6 +667,7 @@ msgstr "Ver XML"
 #: media/templates/admin/feed_links.html:254
 #: media/templates/admin/feed_links.html:275
 #: media/templates/admin/feed_links.html:294
+#: media/templates/admin/feed_links.html:326
 msgid "Manage"
 msgstr "Gerenciar"
 
@@ -650,111 +710,172 @@ msgstr "Feed de Arquivo"
 msgid "Archived content for reference"
 msgstr "Conteúdo arquivado para referência"
 
+#: media/templates/admin/feed_links.html:299
+msgid "Group Feeds"
+msgstr "Feeds de grupos"
+
+#: media/templates/admin/feed_links.html:302
+msgid "Subscribe to individual groups"
+msgstr "Assine grupos individuais"
+
+#: media/templates/admin/feed_links.html:303
+msgid ""
+"Each group has its own feed containing only the media assigned to it. "
+"Subscribe to just the groups you want instead of everything at once."
+msgstr ""
+"Cada grupo tem seu próprio feed com apenas a mídia atribuída a ele. Assine "
+"só os grupos que quiser em vez de tudo de uma vez."
+
+#: media/templates/admin/feed_links.html:309
+msgid "Group feed"
+msgstr "Feed do grupo"
+
+#: media/templates/admin/feed_links.html:313
+#, python-format
+msgid "%(counter)s item in this group"
+msgid_plural "%(counter)s items in this group"
+msgstr[0] "%(counter)s item neste grupo"
+msgstr[1] "%(counter)s itens neste grupo"
+
+#: media/templates/admin/feed_links.html:335
+msgid "No groups yet"
+msgstr "Ainda não há grupos"
+
+#: media/templates/admin/feed_links.html:336
+msgid ""
+"Create a group when adding a URL, or in the admin, and its feed will appear "
+"here."
+msgstr ""
+"Crie um grupo ao adicionar uma URL, ou no admin, e o feed dele aparecerá "
+"aqui."
+
 #: media/templates/admin/grid_view.html:202
 msgid "Media Grid"
 msgstr "Grade de mídia"
 
 #: media/templates/admin/grid_view.html:206
-#: media/templates/admin/item_detail.html:236
+#: media/templates/admin/item_detail.html:291
 #: media/templates/admin/list_view.html:247
 msgid "Type:"
 msgstr "Tipo:"
 
 #: media/templates/admin/grid_view.html:208
+#: media/templates/admin/grid_view.html:215
 #: media/templates/admin/list_view.html:249
+#: media/templates/admin/list_view.html:256
 msgid "All"
 msgstr "Tudo"
 
-#: media/templates/admin/grid_view.html:214
-#: media/templates/admin/list_view.html:255
+#: media/templates/admin/grid_view.html:213
+#: media/templates/admin/item_detail.html:293
+#: media/templates/admin/list_view.html:254
+#: media/templates/admin/list_view.html:324
+msgid "Group:"
+msgstr "Grupo:"
+
+#: media/templates/admin/grid_view.html:216
+#: media/templates/admin/list_view.html:257
+msgid "Ungrouped"
+msgstr "Sem grupo"
+
+#: media/templates/admin/grid_view.html:223
+#: media/templates/admin/list_view.html:264
 msgid "Total Storage:"
 msgstr "Armazenamento total:"
 
-#: media/templates/admin/grid_view.html:219
-#: media/templates/admin/list_view.html:260
+#: media/templates/admin/grid_view.html:228
+#: media/templates/admin/list_view.html:269
 msgid "Grid"
 msgstr "Grade"
 
-#: media/templates/admin/grid_view.html:220
-#: media/templates/admin/list_view.html:261
+#: media/templates/admin/grid_view.html:229
+#: media/templates/admin/list_view.html:270
 msgid "List"
 msgstr "Lista"
 
-#: media/templates/admin/grid_view.html:264
-#: media/templates/admin/list_view.html:320
+#: media/templates/admin/grid_view.html:276
+#: media/templates/admin/list_view.html:335
 msgid "No items found"
 msgstr "Nenhum item encontrado"
 
-#: media/templates/admin/grid_view.html:265
-#: media/templates/admin/list_view.html:321
+#: media/templates/admin/grid_view.html:277
+#: media/templates/admin/list_view.html:336
 msgid "Try adjusting your filters or add some media items."
 msgstr "Tente ajustar seus filtros ou adicionar alguns itens de mídia."
 
-#: media/templates/admin/item_detail.html:187
+#: media/templates/admin/item_detail.html:224
+msgid "New upload from the channel. Download it into the feed, or reject it?"
+msgstr "Novo vídeo do canal. Baixá-lo para o feed ou rejeitá-lo?"
+
+#: media/templates/admin/item_detail.html:231
+msgid "Reject"
+msgstr "Rejeitar"
+
+#: media/templates/admin/item_detail.html:240
 msgid "Edit"
 msgstr "Editar"
 
-#: media/templates/admin/item_detail.html:191
+#: media/templates/admin/item_detail.html:244
 msgid "Archive"
 msgstr "Arquivar"
 
-#: media/templates/admin/item_detail.html:196
+#: media/templates/admin/item_detail.html:249
 msgid "Unarchive"
 msgstr "Desarquivar"
 
-#: media/templates/admin/item_detail.html:199
+#: media/templates/admin/item_detail.html:252
 msgid "Delete"
 msgstr "Excluir"
 
-#: media/templates/admin/item_detail.html:203
+#: media/templates/admin/item_detail.html:257
 msgid "Refetch"
 msgstr "Rebaixar"
 
-#: media/templates/admin/item_detail.html:208
+#: media/templates/admin/item_detail.html:263
 msgid "Regenerate Summary"
 msgstr "Regenerar resumo"
 
-#: media/templates/admin/item_detail.html:208
+#: media/templates/admin/item_detail.html:263
 msgid "Generate Summary"
 msgstr "Gerar resumo"
 
-#: media/templates/admin/item_detail.html:216
+#: media/templates/admin/item_detail.html:271
 msgid "Download Subtitles"
 msgstr "Baixar legendas"
 
-#: media/templates/admin/item_detail.html:222
+#: media/templates/admin/item_detail.html:277
 msgid "Source"
 msgstr "Fonte"
 
-#: media/templates/admin/item_detail.html:228
+#: media/templates/admin/item_detail.html:283
 msgid "By:"
 msgstr "Por:"
 
-#: media/templates/admin/item_detail.html:231
+#: media/templates/admin/item_detail.html:286
 msgid "Published:"
 msgstr "Publicado:"
 
-#: media/templates/admin/item_detail.html:234
+#: media/templates/admin/item_detail.html:289
 msgid "Duration:"
 msgstr "Duração:"
 
-#: media/templates/admin/item_detail.html:241
+#: media/templates/admin/item_detail.html:301
 msgid "Error:"
 msgstr "Erro:"
 
-#: media/templates/admin/item_detail.html:251
+#: media/templates/admin/item_detail.html:313
 msgid "Summary"
 msgstr "Resumo"
 
-#: media/templates/admin/item_detail.html:258
+#: media/templates/admin/item_detail.html:320
 msgid "Description"
 msgstr "Descrição"
 
-#: media/templates/admin/item_detail.html:268
+#: media/templates/admin/item_detail.html:330
 msgid "Your browser does not support audio element."
 msgstr "Seu navegador não suporta o elemento de áudio."
 
-#: media/templates/admin/item_detail.html:276
+#: media/templates/admin/item_detail.html:338
 msgid "Your browser does not support video element."
 msgstr "Seu navegador não suporta o elemento de vídeo."
 
@@ -762,17 +883,94 @@ msgstr "Seu navegador não suporta o elemento de vídeo."
 msgid "Media List"
 msgstr "Lista de mídia"
 
-#: media/templates/admin/list_view.html:297
+#: media/templates/admin/list_view.html:306
 msgid "Size:"
 msgstr "Tamanho:"
 
-#: media/templates/admin/list_view.html:303
+#: media/templates/admin/list_view.html:312
 msgid "Author:"
 msgstr "Autor:"
 
-#: media/templates/admin/list_view.html:309
+#: media/templates/admin/list_view.html:318
 msgid "Added:"
 msgstr "Adicionado:"
+
+#: media/templates/admin/notifications.html:4
+#: media/templates/admin/notifications.html:58
+msgid "Notifications"
+msgstr "Notificações"
+
+#: media/templates/admin/notifications.html:61
+msgid ""
+"Push notifications are not configured. Set STASHCAST_VAPID_PUBLIC_KEY and "
+"STASHCAST_VAPID_PRIVATE_KEY and restart StashCast."
+msgstr ""
+"As notificações push não estão configuradas. Defina "
+"STASHCAST_VAPID_PUBLIC_KEY e STASHCAST_VAPID_PRIVATE_KEY e reinicie o "
+"StashCast."
+
+#: media/templates/admin/notifications.html:63
+msgid ""
+"Turn notifications on separately on every device that should receive them. "
+"On iPhone this only works in StashCast added to the Home Screen."
+msgstr ""
+"Ative as notificações separadamente em cada dispositivo que deve recebê-las. "
+"No iPhone isso só funciona com o StashCast adicionado à Tela de Início."
+
+#: media/templates/admin/notifications.html:65
+#, python-format
+msgid "%(counter)s device subscribed for your account."
+msgid_plural "%(counter)s devices subscribed for your account."
+msgstr[0] "%(counter)s dispositivo inscrito na sua conta."
+msgstr[1] "%(counter)s dispositivos inscritos na sua conta."
+
+#: media/templates/admin/notifications.html:68
+msgid "Enable on this device"
+msgstr "Ativar neste dispositivo"
+
+#: media/templates/admin/notifications.html:69
+msgid "Disable on this device"
+msgstr "Desativar neste dispositivo"
+
+#: media/templates/admin/notifications.html:72
+msgid "Send test notification"
+msgstr "Enviar notificação de teste"
+
+#: media/templates/admin/notifications.html:80
+#, python-format
+msgid "%(counter)s item awaiting approval"
+msgid_plural "%(counter)s items awaiting approval"
+msgstr[0] "%(counter)s item aguardando aprovação"
+msgstr[1] "%(counter)s itens aguardando aprovação"
+
+#: media/templates/admin/notifications.html:128
+msgid ""
+"This browser does not support push notifications. On iPhone, add StashCast "
+"to the Home Screen and open it from there."
+msgstr ""
+"Este navegador não suporta notificações push. No iPhone, adicione o "
+"StashCast à Tela de Início e abra-o por lá."
+
+#: media/templates/admin/notifications.html:146
+msgid "Notifications are blocked for this site in the browser settings."
+msgstr ""
+"As notificações deste site estão bloqueadas nas configurações do navegador."
+
+#: media/templates/admin/notifications.html:156
+msgid "Notifications are on for this device."
+msgstr "As notificações estão ativadas neste dispositivo."
+
+#: media/templates/admin/notifications.html:159
+msgid "Could not turn notifications on:"
+msgstr "Não foi possível ativar as notificações:"
+
+#: media/templates/admin/notifications.html:171
+msgid "Notifications are off for this device."
+msgstr "As notificações estão desativadas neste dispositivo."
+
+#: media/templates/admin/notifications.html:175
+msgid "Could not register the service worker:"
+msgstr "Não foi possível registrar o service worker:"
 
 #: media/templates/admin/preferences.html:4
 #: media/templates/admin/preferences.html:150
@@ -858,7 +1056,7 @@ msgstr "Projeto"
 
 #: media/templates/admin/preferences.html:242
 msgid "Deployed"
-msgstr ""
+msgstr "Implantado"
 
 #: media/templates/media/home.html:187
 msgid "StashCast illustration"
@@ -913,3 +1111,11 @@ msgstr "StashCast - Processando mídia"
 #: media/templates/media/stash_progress.html:272
 msgid "items queued"
 msgstr "itens na fila"
+
+#: media/views.py:81
+msgid "Download media from the web and publish it as podcast feeds"
+msgstr "Baixe mídia da web e publique-a como feeds de podcast"
+
+#: templates/admin/base_site.html:19
+msgid "Django site admin"
+msgstr "Administração do StashCast"

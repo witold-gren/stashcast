@@ -35,6 +35,7 @@ I created this since friends and family often send me links to listen to a singl
 - Async background processing via task queue
 - **YouTube channel subscriptions** with a paced download queue and automatic retries (see [download queue docs](docs/DOWNLOAD_QUEUE.md))
 - **Installable on a phone** - add it to the iOS home screen and it opens as its own app (see [home screen docs](docs/HOME_SCREEN_APP.md))
+- **Approve before download** - for big channels, get a push notification per new upload with Download / Reject buttons; optional "new episode ready" notifications and per-group auto-delete after N days (see [group options](docs/DOWNLOAD_QUEUE.md#approving-uploads-before-they-download) and [push setup](docs/HOME_SCREEN_APP.md#push-notifications))
 - Automatic media type detection (audio/video)
 - Podcast feed generation (RSS/Atom) for audio and video
 - Optional transcoding via ffmpeg
