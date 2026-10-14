@@ -1,10 +1,13 @@
 import json
+import re
 import time
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
-from django.http import JsonResponse, StreamingHttpResponse
+from django.db.models import Q
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
 from django.utils import timezone
@@ -20,7 +23,7 @@ from media.tasks import (
     queue_items_for_download,
     worker_is_alive,
 )
-from media.operations import resolve_requested_type
+from media.operations import find_group_for_channel, resolve_requested_type
 from media.utils import build_media_url
 
 
@@ -45,6 +48,44 @@ def _resolve_group(request):
         return MediaGroup.objects.filter(pk=group_id).first()
 
     return None
+
+
+def _find_group(value):
+    """A group by slug or, failing that, by name (case-insensitive)."""
+    return (
+        MediaGroup.objects.filter(slug=value).first()
+        or MediaGroup.objects.filter(name__iexact=value).first()
+    )
+
+
+_YOUTUBE_ID_RE = re.compile(r'(?:[?&]v=|youtu\.be/|/shorts/|/live/)([A-Za-z0-9_-]{11})')
+
+# An item in one of these already has (or is about to have) the file
+_STASHED_STATUSES = (
+    MediaItem.STATUS_READY,
+    MediaItem.STATUS_ARCHIVED,
+    MediaItem.STATUS_QUEUED,
+    *MediaItem.IN_PROGRESS_STATUSES,
+)
+
+
+def _find_stashed_item(url):
+    """An item that already holds ``url``, matched by URL or by YouTube video id.
+
+    Items awaiting approval, rejected or failed are not counted - asking for them
+    again means "download it now".
+    """
+    query = Q(source_url=url)
+    match = _YOUTUBE_ID_RE.search(url)
+    if match:
+        video_id = match.group(1)
+        query |= Q(external_id=video_id, extractor__istartswith='youtube')
+        query |= Q(source_url__contains=video_id)
+    return (
+        MediaItem.objects.filter(query, status__in=_STASHED_STATUSES)
+        .select_related('group')
+        .first()
+    )
 
 
 def _assign_group(item, group):
@@ -125,6 +166,11 @@ def stash_view(request):
         type (required): auto|audio|video
         allow_multiple (optional): If 'true', allow downloading multiple items
         redirect (optional): If 'progress', redirect to progress page instead of returning JSON
+        group (optional): Slug or name of the group to file the item under. A YouTube
+            video whose channel is followed by a group goes to that group instead.
+        skip_existing (optional): If 'true', a video that is already downloaded, queued
+            or downloading is left alone and reported as ``already``, rather than being
+            downloaded again (the YouTube button relies on this)
 
     Returns:
         JSON response with item details, or redirect to progress page
@@ -144,6 +190,9 @@ def stash_view(request):
     close_tab_after = request.GET.get('closeTabAfter') or request.POST.get('closeTabAfter')
     allow_multiple_param = request.GET.get('allow_multiple') or request.POST.get('allow_multiple')
     allow_multiple = allow_multiple_param in ['true', 'True', '1', 'yes']
+    group_param = (request.GET.get('group') or request.POST.get('group') or '').strip()
+    skip_existing_param = request.GET.get('skip_existing') or request.POST.get('skip_existing')
+    skip_existing = skip_existing_param in ['true', 'True', '1', 'yes']
 
     if not url:
         return JsonResponse({'error': 'Missing required parameter: url'}, status=400)
@@ -153,6 +202,29 @@ def stash_view(request):
             {'error': 'Invalid type parameter. Must be: auto, audio, or video'},
             status=400,
         )
+
+    default_group = None
+    if group_param:
+        default_group = _find_group(group_param)
+        if default_group is None:
+            return JsonResponse({'error': f'Unknown group: {group_param}'}, status=400)
+
+    if skip_existing:
+        existing = _find_stashed_item(url)
+        if existing is not None:
+            return JsonResponse(
+                {
+                    'success': True,
+                    'already': True,
+                    'guid': existing.guid,
+                    'status': existing.status,
+                    'title': existing.title,
+                    'group': existing.group.name if existing.group else None,
+                    'detail_url': request.build_absolute_uri(
+                        f'/admin/tools/item/{existing.guid}/'
+                    ),
+                }
+            )
 
     # Check episode limit
     from media.tasks import check_episode_limit
@@ -216,6 +288,7 @@ def stash_view(request):
                 status=500,
             )
 
+    prefetch_result = None
     if strategy == 'ytdlp':
         try:
             prefetch_result = prefetch(url, strategy, logger=None)
@@ -280,12 +353,15 @@ def stash_view(request):
                         item.requested_type = requested_type
                         item.status = MediaItem.STATUS_PREFETCHING
                         item.error_message = ''
+                        if default_group is not None:
+                            item.group = default_group
                         item.save()
                     else:
                         item = MediaItem.objects.create(
                             source_url=entry_url,
                             requested_type=requested_type,
                             slug='pending',
+                            group=default_group,
                         )
 
                     created_guids.append(item.guid)
@@ -338,6 +414,21 @@ def stash_view(request):
             pass
 
     # Single item flow
+    # A video from a channel some group follows belongs in that group; anything else
+    # goes to the group the caller asked for
+    group = default_group
+    matched_channel = False
+    if prefetch_result is not None and not prefetch_result.is_multiple:
+        channel_group = find_group_for_channel(
+            channel_id=prefetch_result.channel_id,
+            handle=prefetch_result.channel_handle,
+            channel_url=prefetch_result.channel_url,
+        )
+        if channel_group is not None:
+            group = channel_group
+            matched_channel = True
+    requested_type = resolve_requested_type(requested_type, group)
+
     # Check if item already exists for this URL and requested type combination
     existing_item = None
 
@@ -347,6 +438,13 @@ def stash_view(request):
     else:
         # Match with items that have the same media_type as requested
         existing_item = MediaItem.objects.filter(source_url=url, media_type=requested_type).first()
+    if existing_item is None:
+        # An upload awaiting approval, or rejected, may not know its media type yet;
+        # asking for it now means "download it", not "make a second copy"
+        existing_item = MediaItem.objects.filter(
+            source_url=url,
+            status__in=(MediaItem.STATUS_AWAITING_APPROVAL, MediaItem.STATUS_REJECTED),
+        ).first()
 
     if existing_item:
         # Reuse existing item - overwrite behavior
@@ -354,6 +452,8 @@ def stash_view(request):
         item.requested_type = requested_type
         item.status = MediaItem.STATUS_PREFETCHING
         item.error_message = ''
+        if group is not None:
+            item.group = group
         item.save()
 
         # Log the overwrite
@@ -369,6 +469,7 @@ def stash_view(request):
             source_url=url,
             requested_type=requested_type,
             slug='pending',  # Will be set during processing
+            group=group,
         )
 
     # Enqueue processing task
@@ -389,6 +490,9 @@ def stash_view(request):
             'url': url,
             'type': requested_type,
             'status': item.status,
+            'title': prefetch_result.title if prefetch_result else '',
+            'group': group.name if group else None,
+            'matched_channel': matched_channel,
             'detail_url': request.build_absolute_uri(f'/admin/tools/item/{item.guid}/'),
         }
     )
@@ -450,6 +554,82 @@ def bookmarklet_view(request):
     }
 
     return render(request, 'admin/bookmarklet.html', context)
+
+
+USERSCRIPT_PATH = Path(settings.BASE_DIR) / 'userscript' / 'stashcast.user.js'
+USERSCRIPT_TYPES = ('auto', 'audio', 'video')
+
+
+def build_userscript(base_url, token, group_slug='', media_type='auto'):
+    """The YouTube button userscript with its configuration block filled in.
+
+    The script in the repository ships with placeholder values; each ``const NAME =``
+    line of its configuration block is replaced with the real value.
+    """
+    source = USERSCRIPT_PATH.read_text(encoding='utf-8')
+    values = {
+        'STASHCAST_URL': base_url,
+        'TOKEN': token,
+        'DEFAULT_GROUP': group_slug,
+        'TYPE': media_type,
+    }
+    for name, value in values.items():
+        source, count = re.subn(
+            rf'^(  const {name} = ).*;$',
+            lambda match, value=value: f'{match.group(1)}{json.dumps(value)};',
+            source,
+            count=1,
+            flags=re.M,
+        )
+        if count != 1:
+            raise ValueError(f'userscript has no "const {name} =" line to configure')
+    return source
+
+
+def _userscript_options(request):
+    """Group slug, media type and token for the userscript, from the query string."""
+    from media.admin import is_demo_readonly
+
+    group = _find_group(request.GET.get('group', '')) if request.GET.get('group') else None
+    media_type = request.GET.get('type', 'auto')
+    if media_type not in USERSCRIPT_TYPES:
+        media_type = 'auto'
+    # Demo users get a script that cannot stash anything, like their bookmarklet
+    token = (
+        'demo-user-no-access' if is_demo_readonly(request.user) else settings.STASHCAST_USER_TOKEN
+    )
+    return group, media_type, token
+
+
+@staff_member_required
+def youtube_button_view(request):
+    """Admin page that hands out the YouTube button userscript, ready configured."""
+    group, media_type, token = _userscript_options(request)
+    base_url = request.build_absolute_uri('/').rstrip('/')
+    script = build_userscript(base_url, token, group.slug if group else '', media_type)
+
+    context = {
+        **admin.site.each_context(request),
+        'title': _('YouTube Button'),
+        'groups': MediaGroup.objects.order_by('name'),
+        'selected_group': group,
+        'selected_type': media_type,
+        'types': USERSCRIPT_TYPES,
+        'script': script,
+        'followed_channels': MediaGroup.objects.exclude(youtube_channel_url='').count(),
+    }
+    return render(request, 'admin/youtube_button.html', context)
+
+
+@staff_member_required
+def youtube_button_script_view(request):
+    """The configured userscript as a .user.js file, so a userscript manager installs it."""
+    group, media_type, token = _userscript_options(request)
+    base_url = request.build_absolute_uri('/').rstrip('/')
+    script = build_userscript(base_url, token, group.slug if group else '', media_type)
+    response = HttpResponse(script, content_type='text/javascript; charset=utf-8')
+    response['Content-Disposition'] = 'inline; filename="stashcast.user.js"'
+    return response
 
 
 @staff_member_required

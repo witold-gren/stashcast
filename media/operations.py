@@ -308,6 +308,28 @@ def sync_group_channel(group, max_videos=None, wait=False, logger=None, immediat
     return new_items
 
 
+def find_group_for_channel(channel_id=None, handle=None, channel_url=None):
+    """
+    The group that follows a given YouTube channel, if any.
+
+    Matches the channel's id, @handle or URL against every group's
+    youtube_channel_url, whichever form the group was set up with.
+
+    Returns:
+        MediaGroup or None
+    """
+    from media.models import MediaGroup
+    from media.service.youtube_channel import channel_keys
+
+    wanted = channel_keys(channel_url, channel_id=channel_id, handle=handle)
+    if not wanted:
+        return None
+    for group in MediaGroup.objects.exclude(youtube_channel_url='').order_by('pk'):
+        if channel_keys(group.youtube_channel_url) & wanted:
+            return group
+    return None
+
+
 def create_awaiting_item(video, group, wait=False, logger=None):
     """
     Record a channel upload that needs the user's approval before it is downloaded.

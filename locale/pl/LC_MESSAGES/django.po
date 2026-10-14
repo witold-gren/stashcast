@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 21:42+0000\n"
+"POT-Creation-Date: 2026-10-14 22:02+0000\n"
 "PO-Revision-Date: 2026-07-26 13:10+0000\n"
 "Last-Translator: StashCast Team\n"
 "Language-Team: Polish <LL@li.org>\n"
@@ -648,6 +648,7 @@ msgstr "Kiedy ostatnio sprawdzono tę grupę pod kątem nowych filmów na YouTub
 #: media/templates/admin/list_view.html:250
 #: media/templates/admin/list_view.html:296
 #: media/templates/admin/preferences.html:161
+#: media/templates/admin/youtube_button.html:82
 msgid "Audio"
 msgstr "Audio"
 
@@ -659,6 +660,7 @@ msgstr "Audio"
 #: media/templates/admin/list_view.html:251
 #: media/templates/admin/list_view.html:298
 #: media/templates/admin/preferences.html:165
+#: media/templates/admin/youtube_button.html:82
 msgid "Video"
 msgstr "Wideo"
 
@@ -692,7 +694,7 @@ msgstr ""
 "STASHCAST_WHISPER_ENABLED; istniejących elementów to nie dotyczy – dla nich "
 "użyj akcji „Utwórz transkrypcję”."
 
-#: media/models.py:83
+#: media/models.py:83 media/templates/admin/youtube_button.html:78
 msgid "Download type"
 msgstr "Typ pobierania"
 
@@ -1319,6 +1321,7 @@ msgid "Auto-detect will determine if the content is audio or video"
 msgstr "Automatyczne wykrywanie określi, czy treść to audio czy wideo"
 
 #: media/templates/admin/admin_stash_form.html:296
+#: media/templates/admin/youtube_button.html:71
 msgid "— No group —"
 msgstr "— Brak grupy —"
 
@@ -1585,7 +1588,7 @@ msgstr "Przetestuj bookmarklet"
 msgid "Code copied to clipboard!"
 msgstr "Kod skopiowano do schowka!"
 
-#: media/templates/admin/feed_links.html:4 stashcast/settings.py:104
+#: media/templates/admin/feed_links.html:4 stashcast/settings.py:109
 msgid "Feed Links"
 msgstr "Linki do kanałów"
 
@@ -1780,6 +1783,7 @@ msgstr ""
 "jej kanał pojawi się tutaj."
 
 #: media/templates/admin/feed_links.html:349
+#: media/templates/admin/youtube_button.html:116
 msgid "Copied!"
 msgstr "Skopiowano!"
 
@@ -1914,7 +1918,7 @@ msgid "Added:"
 msgstr "Dodano:"
 
 #: media/templates/admin/notifications.html:4
-#: media/templates/admin/notifications.html:58 stashcast/settings.py:109
+#: media/templates/admin/notifications.html:58 stashcast/settings.py:114
 msgid "Notifications"
 msgstr "Powiadomienia"
 
@@ -1995,7 +1999,7 @@ msgstr "Nie udało się zarejestrować service workera:"
 
 #: media/templates/admin/preferences.html:4
 #: media/templates/admin/preferences.html:150
-#: media/templates/admin/preferences.html:230 stashcast/settings.py:114
+#: media/templates/admin/preferences.html:230 stashcast/settings.py:119
 msgid "About"
 msgstr "O aplikacji"
 
@@ -2079,6 +2083,108 @@ msgstr "Projekt"
 msgid "Deployed"
 msgstr "Wdrożono"
 
+#: media/templates/admin/youtube_button.html:4
+#: media/templates/admin/youtube_button.html:61 media/views.py:613
+#: stashcast/settings.py:104
+msgid "YouTube Button"
+msgstr "Przycisk YouTube"
+
+#: media/templates/admin/youtube_button.html:63
+msgid ""
+"A userscript that adds a StashCast button to every video on YouTube - "
+"thumbnails and the video you are watching. One click downloads the video. A "
+"video from a channel that one of your groups follows goes into that group; "
+"any other video goes into the default group chosen below."
+msgstr ""
+"Skrypt (userscript), który dodaje przycisk StashCast do każdego filmu na "
+"YouTube – na miniaturkach i przy oglądanym filmie. Jedno kliknięcie pobiera "
+"film. Film z kanału przypisanego do którejś z Twoich grup trafia do tej "
+"grupy; każdy inny trafia do grupy domyślnej wybranej poniżej."
+
+#: media/templates/admin/youtube_button.html:65
+#, python-format
+msgid "%(counter)s group follows a YouTube channel."
+msgid_plural "%(counter)s groups follow a YouTube channel."
+msgstr[0] "%(counter)s grupa śledzi kanał YouTube."
+msgstr[1] "%(counter)s grupy śledzą kanały YouTube."
+msgstr[2] "%(counter)s grup śledzi kanały YouTube."
+msgstr[3] "%(counter)s grupy śledzi kanały YouTube."
+
+#: media/templates/admin/youtube_button.html:69
+msgid "Default group"
+msgstr "Grupa domyślna"
+
+#: media/templates/admin/youtube_button.html:82
+msgid "Group setting"
+msgstr "Ustawienie grupy"
+
+#: media/templates/admin/youtube_button.html:88
+msgid "Update script"
+msgstr "Zaktualizuj skrypt"
+
+#: media/templates/admin/youtube_button.html:93
+msgid "Install / download stashcast.user.js"
+msgstr "Zainstaluj / pobierz stashcast.user.js"
+
+#: media/templates/admin/youtube_button.html:94
+#: media/templates/admin/youtube_button.html:117
+msgid "Copy script"
+msgstr "Kopiuj skrypt"
+
+#: media/templates/admin/youtube_button.html:99
+msgid "How to install"
+msgstr "Jak zainstalować"
+
+#: media/templates/admin/youtube_button.html:101
+msgid ""
+"Install the free Userscripts app from the App Store (Mac and iPhone) and "
+"turn its Safari extension on."
+msgstr ""
+"Zainstaluj darmową aplikację Userscripts z App Store (Mac i iPhone) i włącz "
+"jej rozszerzenie w Safari."
+
+#: media/templates/admin/youtube_button.html:102
+msgid ""
+"Open the install link above in Safari (logged in to StashCast), open the "
+"Userscripts extension from the toolbar and choose Install. If it does not "
+"offer that, create a new script in Userscripts and paste the copied one."
+msgstr ""
+"Otwórz powyższy link instalacyjny w Safari (zalogowany do StashCast), otwórz "
+"rozszerzenie Userscripts z paska narzędzi i wybierz Install. Jeśli nie "
+"zaproponuje instalacji, utwórz nowy skrypt w Userscripts i wklej skopiowany."
+
+#: media/templates/admin/youtube_button.html:103
+msgid ""
+"Allow the Userscripts extension on youtube.com (Mac: Safari settings, "
+"Extensions; iPhone: the extensions menu in the address bar)."
+msgstr ""
+"Zezwól rozszerzeniu Userscripts na youtube.com (Mac: Ustawienia Safari, "
+"Rozszerzenia; iPhone: menu rozszerzeń w pasku adresu)."
+
+#: media/templates/admin/youtube_button.html:104
+msgid ""
+"Open YouTube in Safari: a round + button appears on every thumbnail, and a "
+"large one on the video you are watching."
+msgstr ""
+"Otwórz YouTube w Safari: okrągły przycisk + pojawi się na każdej miniaturce, "
+"a duży przy oglądanym filmie."
+
+#: media/templates/admin/youtube_button.html:106
+msgid ""
+"Step-by-step instructions, including an iOS Shortcut for the YouTube app, "
+"are in userscript/README.md in the repository."
+msgstr ""
+"Instrukcja krok po kroku, razem ze Skrótem iOS dla aplikacji YouTube, jest w "
+"pliku userscript/README.pl.md w repozytorium."
+
+#: media/templates/admin/youtube_button.html:107
+msgid ""
+"The script contains your user token - share it only with people who may add "
+"downloads."
+msgstr ""
+"Skrypt zawiera Twój token – udostępniaj go tylko osobom, które mogą dodawać "
+"pobrania."
+
 #: media/templates/media/home.html:187
 msgid "StashCast illustration"
 msgstr "Ilustracja StashCast"
@@ -2148,78 +2254,78 @@ msgstr "Zamknięcie karty za %%(seconds)s s..."
 msgid "This item is ready! %%(count)s more item(s) processing in background."
 msgstr "Ten element jest gotowy! Pozostałe elementy w tle: %%(count)s."
 
-#: media/views.py:81
+#: media/views.py:122
 msgid "Download media from the web and publish it as podcast feeds"
 msgstr "Pobieraj media z sieci i publikuj je jako podcasty"
 
-#: media/views.py:497 media/views.py:738 media/views.py:846
+#: media/views.py:677 media/views.py:918 media/views.py:1026
 msgid "Demo users are not allowed to add URLs."
 msgstr "Konto demo nie może dodawać adresów URL."
 
-#: media/views.py:522
+#: media/views.py:702
 msgid "No valid URLs found in bulk input"
 msgstr "Nie znaleziono poprawnych adresów URL na liście"
 
-#: media/views.py:571
+#: media/views.py:751
 #, python-format
 msgid "Queued %(count)s URL(s) for download"
 msgstr "Dodano do kolejki pobierania adresy: %(count)s"
 
-#: media/views.py:573
+#: media/views.py:753
 #, python-format
 msgid "(%(count)s invalid URL(s) skipped)"
 msgstr "(pominięto niepoprawne adresy: %(count)s)"
 
-#: media/views.py:581
+#: media/views.py:761
 msgid "No valid URLs were processed"
 msgstr "Nie przetworzono żadnego poprawnego adresu URL"
 
-#: media/views.py:632
+#: media/views.py:812
 #, python-format
 msgid "Error fetching Spotify metadata: %(error)s"
 msgstr "Błąd pobierania metadanych ze Spotify: %(error)s"
 
-#: media/views.py:685 media/views.py:900
+#: media/views.py:865 media/views.py:1080
 #, python-format
 msgid "Re-fetching existing item: %(guid)s"
 msgstr "Ponowne pobieranie istniejącego elementu: %(guid)s"
 
-#: media/views.py:691
+#: media/views.py:871
 #, python-format
 msgid "Created new item: %(guid)s"
 msgstr "Utworzono nowy element: %(guid)s"
 
-#: media/views.py:699
+#: media/views.py:879
 msgid "Please provide a URL"
 msgstr "Podaj adres URL"
 
-#: media/views.py:732
+#: media/views.py:912
 msgid "No multi-item data found. Please try again."
 msgstr "Nie znaleziono danych wielu elementów. Spróbuj ponownie."
 
-#: media/views.py:793
+#: media/views.py:973
 #, python-format
 msgid "Queued %(count)s item(s) for download"
 msgstr "Dodano do kolejki pobierania elementy: %(count)s"
 
-#: media/views.py:840
+#: media/views.py:1020
 msgid "No Spotify URL found. Please try again."
 msgstr "Nie znaleziono adresu Spotify. Spróbuj ponownie."
 
-#: media/views.py:858
+#: media/views.py:1038
 msgid "Please select a YouTube result or enter a custom URL."
 msgstr "Wybierz wynik z YouTube albo wpisz własny adres URL."
 
-#: media/views.py:910
+#: media/views.py:1090
 #, python-format
 msgid "Downloading from YouTube (original: Spotify): %(title)s"
 msgstr "Pobieranie z YouTube (oryginał: Spotify): %(title)s"
 
-#: media/views.py:911
+#: media/views.py:1091
 msgid "Unknown"
 msgstr "Nieznany"
 
-#: media/views.py:1203
+#: media/views.py:1383
 #, python-format
 msgid ""
 "Worker unavailable: no heartbeat from the Huey worker and the task has been "
@@ -2228,62 +2334,62 @@ msgstr ""
 "Worker niedostępny: brak sygnału od workera Huey, a zadanie czeka już "
 "%(seconds)s s. Uruchom go poleceniem: python manage.py run_huey"
 
-#: media/views.py:1266
+#: media/views.py:1446
 #, python-format
 msgid "Archived: %(title)s"
 msgstr "Zarchiwizowano: %(title)s"
 
-#: media/views.py:1268
+#: media/views.py:1448
 msgid "Only ready items can be archived."
 msgstr "Archiwizować można tylko gotowe elementy."
 
-#: media/views.py:1291
+#: media/views.py:1471
 #, python-format
 msgid "Re-fetching: %(title)s"
 msgstr "Ponowne pobieranie: %(title)s"
 
-#: media/views.py:1313
+#: media/views.py:1493
 #, python-format
 msgid "Regenerating summary for: %(title)s"
 msgstr "Ponowne generowanie podsumowania: %(title)s"
 
-#: media/views.py:1316
+#: media/views.py:1496
 msgid "No subtitles available for summary generation."
 msgstr "Brak napisów do wygenerowania podsumowania."
 
-#: media/views.py:1339
+#: media/views.py:1519
 #, python-format
 msgid "Unarchived: %(title)s"
 msgstr "Przywrócono z archiwum: %(title)s"
 
-#: media/views.py:1341
+#: media/views.py:1521
 msgid "Only archived items can be unarchived."
 msgstr "Z archiwum można przywrócić tylko zarchiwizowane elementy."
 
-#: media/views.py:1368
+#: media/views.py:1548
 msgid "This item is no longer awaiting approval."
 msgstr "Ten element nie czeka już na zatwierdzenie."
 
-#: media/views.py:1370
+#: media/views.py:1550
 #, python-format
 msgid "Downloading: %(title)s"
 msgstr "Pobieranie: %(title)s"
 
-#: media/views.py:1372
+#: media/views.py:1552
 #, python-format
 msgid "Rejected: %(title)s"
 msgstr "Odrzucono: %(title)s"
 
-#: media/views.py:1421
+#: media/views.py:1601
 msgid "Test notification - push works on this device."
 msgstr "Powiadomienie testowe – push działa na tym urządzeniu."
 
-#: media/views.py:1429
+#: media/views.py:1609
 #, python-format
 msgid "Test notification sent to %(count)s device(s)."
 msgstr "Wysłano powiadomienie testowe na urządzenia: %(count)s."
 
-#: media/views.py:1432
+#: media/views.py:1612
 msgid "No device received the notification."
 msgstr "Żadne urządzenie nie odebrało powiadomienia."
 
@@ -2295,23 +2401,23 @@ msgstr "Narzędzia"
 msgid "Bookmarklet"
 msgstr "Bookmarklet"
 
-#: stashcast/settings.py:119
+#: stashcast/settings.py:124
 msgid "Site Home"
 msgstr "Strona główna"
 
-#: stashcast/settings.py:126
+#: stashcast/settings.py:131
 msgid "Administration"
 msgstr "Administracja"
 
-#: stashcast/settings.py:129
+#: stashcast/settings.py:134
 msgid "Media Groups"
 msgstr "Grupy"
 
-#: stashcast/settings.py:134
+#: stashcast/settings.py:139
 msgid "Media Items"
 msgstr "Pliki"
 
-#: stashcast/settings.py:139
+#: stashcast/settings.py:144
 msgid "Awaiting Approval"
 msgstr "Oczekujące na zatwierdzenie"
 

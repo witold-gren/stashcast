@@ -90,6 +90,11 @@ class PrefetchResult:
     publish_date: Optional[datetime] = None
     # Remote thumbnail URL reported by the source, if any
     thumbnail_url: Optional[str] = None
+    # Channel the video belongs to (YouTube): lets a stash request land in the group
+    # that follows this channel
+    channel_id: Optional[str] = None
+    channel_handle: Optional[str] = None
+    channel_url: Optional[str] = None
     # Multi-item support
     entries: List[EntryInfo] = field(default_factory=list)
     is_multiple: bool = False
@@ -336,6 +341,11 @@ def _prefetch_ytdlp_inner(url, logger=None):
         result.webpage_url = info.get('webpage_url', url)
         result.publish_date = parse_publish_date(info)
         result.thumbnail_url = info.get('thumbnail')
+        result.channel_id = info.get('channel_id')
+        # uploader_id is the @handle on YouTube ('@name'); other sites put other ids there
+        uploader_id = info.get('uploader_id') or ''
+        result.channel_handle = uploader_id if uploader_id.startswith('@') else None
+        result.channel_url = info.get('channel_url') or info.get('uploader_url')
 
         # Check for video/audio streams
         formats = info.get('formats', [])

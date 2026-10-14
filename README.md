@@ -41,6 +41,7 @@ I created this since friends and family often send me links to listen to a singl
 - Optional transcoding via ffmpeg
 - Extractive summarization from subtitles
 - Bookmarklet for one-click media ingestion
+- **YouTube button** - a userscript for Safari (macOS and iOS) that adds a StashCast button to every YouTube video; videos go to the group that follows their channel, or to a default group (see [userscript/README.md](userscript/README.md))
 - Admin interface for managing downloads
 - Django commands for management via CLI instead of web
 

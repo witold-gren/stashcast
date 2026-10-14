@@ -46,6 +46,8 @@ from media.views import (
     stash_progress_view,
     stash_status_stream,
     stash_view,
+    youtube_button_script_view,
+    youtube_button_view,
 )
 
 admin.site.site_header = 'StashCast'  # default: "Django Administration"
@@ -80,6 +82,13 @@ urlpatterns = [
     path('', home_view, name='home'),
     # Custom admin tools (must come before admin.site.urls)
     path('admin/tools/bookmarklet/', bookmarklet_view, name='bookmarklet'),
+    path('admin/tools/youtube-button/', youtube_button_view, name='youtube_button'),
+    # Ends in .user.js so userscript managers offer to install it
+    path(
+        'admin/tools/youtube-button/stashcast.user.js',
+        youtube_button_script_view,
+        name='youtube_button_script',
+    ),
     path('admin/tools/feeds/', feed_links_view, name='feed_links'),
     path('admin/tools/add-url/', admin_stash_form_view, name='admin_stash_form'),
     path(

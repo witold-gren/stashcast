@@ -21,6 +21,44 @@ _CHANNEL_ROOT_RE = re.compile(r'youtube\.com/(@[^/?#]+|channel/[^/?#]+|c/[^/?#]+
 _TAB_SUFFIXES = ('/videos', '/streams', '/shorts', '/playlists', '/featured', '/community')
 
 
+# The part of a channel URL that names the channel, in any of YouTube's forms
+_CHANNEL_KEY_RE = re.compile(
+    r'youtube\.com/(?:(@[^/?#]+)|channel/([^/?#]+)|(c|user)/([^/?#]+))', re.IGNORECASE
+)
+
+
+def channel_keys(url=None, channel_id=None, handle=None):
+    """Comparable identifiers of a YouTube channel.
+
+    A channel has several names - its id (UC...), its @handle and, for older channels,
+    a /c/ or /user/ path - and a group may have been set up with any one of them. Two
+    channels are the same when their key sets share an element.
+
+    Args:
+        url: Any channel URL (the root or one of its tabs)
+        channel_id: Channel id as reported by yt-dlp (``channel_id``)
+        handle: @handle as reported by yt-dlp (``uploader_id``)
+
+    Returns:
+        set[str]: e.g. {'id:UCabc', 'handle:@name'}; empty when nothing is known.
+    """
+    keys = set()
+    if channel_id:
+        keys.add(f'id:{channel_id}')
+    if handle:
+        keys.add(f'handle:{handle.lower()}')
+    match = _CHANNEL_KEY_RE.search(url or '')
+    if match:
+        at_handle, cid, kind, legacy = match.groups()
+        if at_handle:
+            keys.add(f'handle:{at_handle.lower()}')
+        elif cid:
+            keys.add(f'id:{cid}')
+        else:
+            keys.add(f'{kind.lower()}:{legacy.lower()}')
+    return keys
+
+
 @dataclass
 class ChannelVideo:
     """A single upload discovered on a channel."""

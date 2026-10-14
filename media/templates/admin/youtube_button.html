@@ -1,0 +1,129 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "YouTube Button" %}{% endblock %}
+
+{% block extrastyle %}
+<style>
+    :root {
+        --sc-panel-bg: var(--body-bg, #ffffff);
+        --sc-panel-fg: var(--body-fg, #222222);
+        --sc-muted: var(--body-quiet-color, #6b7280);
+        --sc-border: var(--hairline-color, #d4d4d4);
+        --sc-primary: var(--primary, #417690);
+        --sc-primary-fg: var(--primary-fg, #ffffff);
+        --sc-surface: var(--darkened-bg, rgba(0,0,0,0.03));
+    }
+    .dark {
+        --sc-panel-bg: #1e293b;
+        --sc-panel-fg: #e2e8f0;
+        --sc-muted: #94a3b8;
+        --sc-border: #334155;
+        --sc-primary: #60a5fa;
+        --sc-primary-fg: #ffffff;
+        --sc-surface: rgba(255,255,255,0.06);
+    }
+    .container {
+        max-width: 860px;
+        background: var(--sc-panel-bg);
+        color: var(--sc-panel-fg);
+        border-radius: 8px;
+        padding: 30px;
+        border: 1px solid var(--sc-border);
+    }
+    .container h1 { margin-top: 0; }
+    .container h2 { margin-top: 28px; font-size: 18px; }
+    .container p, .container li { color: var(--sc-muted); line-height: 1.55; }
+    .options { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin: 20px 0; }
+    .options label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--sc-panel-fg); }
+    .options select {
+        padding: 8px 10px; border-radius: 6px; border: 1px solid var(--sc-border);
+        background: var(--sc-panel-bg); color: var(--sc-panel-fg); min-width: 220px;
+    }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+    .buttons a, .buttons button {
+        display: inline-block; padding: 10px 18px; border-radius: 6px; font-size: 14px;
+        font-weight: 600; cursor: pointer; text-decoration: none;
+        border: 1px solid var(--sc-border); background: var(--sc-panel-bg); color: var(--sc-panel-fg);
+    }
+    .buttons .primary { background: var(--sc-primary); border-color: var(--sc-primary); color: var(--sc-primary-fg); }
+    textarea.script {
+        width: 100%; height: 320px; font: 12px/1.45 ui-monospace, Menlo, monospace;
+        padding: 12px; border-radius: 6px; border: 1px solid var(--sc-border);
+        background: var(--sc-surface); color: var(--sc-panel-fg); box-sizing: border-box;
+    }
+    code { background: var(--sc-surface); padding: 1px 5px; border-radius: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{% trans "YouTube Button" %}</h1>
+
+    <p>{% trans "A userscript that adds a StashCast button to every video on YouTube - thumbnails and the video you are watching. One click downloads the video. A video from a channel that one of your groups follows goes into that group; any other video goes into the default group chosen below." %}</p>
+
+    <p>{% blocktrans count counter=followed_channels %}{{ counter }} group follows a YouTube channel.{% plural %}{{ counter }} groups follow a YouTube channel.{% endblocktrans %}</p>
+
+    <form method="get" class="options">
+        <div>
+            <label for="group">{% trans "Default group" %}</label>
+            <select name="group" id="group">
+                <option value="">{% trans "— No group —" %}</option>
+                {% for group in groups %}
+                    <option value="{{ group.slug }}"{% if selected_group and selected_group.pk == group.pk %} selected{% endif %}>{{ group.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="type">{% trans "Download type" %}</label>
+            <select name="type" id="type">
+                {% for value in types %}
+                    <option value="{{ value }}"{% if value == selected_type %} selected{% endif %}>
+                        {% if value == 'auto' %}{% trans "Group setting" %}{% elif value == 'audio' %}{% trans "Audio" %}{% else %}{% trans "Video" %}{% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="buttons" style="margin: 0;">
+            <button type="submit">{% trans "Update script" %}</button>
+        </div>
+    </form>
+
+    <div class="buttons">
+        <a class="primary" href="{% url 'youtube_button_script' %}?group={{ selected_group.slug|default:''|urlencode }}&amp;type={{ selected_type|urlencode }}">{% trans "Install / download stashcast.user.js" %}</a>
+        <button type="button" id="copy-script">{% trans "Copy script" %}</button>
+    </div>
+
+    <textarea class="script" id="script" readonly>{{ script }}</textarea>
+
+    <h2>{% trans "How to install" %}</h2>
+    <ol>
+        <li>{% trans "Install the free Userscripts app from the App Store (Mac and iPhone) and turn its Safari extension on." %}</li>
+        <li>{% trans "Open the install link above in Safari (logged in to StashCast), open the Userscripts extension from the toolbar and choose Install. If it does not offer that, create a new script in Userscripts and paste the copied one." %}</li>
+        <li>{% trans "Allow the Userscripts extension on youtube.com (Mac: Safari settings, Extensions; iPhone: the extensions menu in the address bar)." %}</li>
+        <li>{% trans "Open YouTube in Safari: a round + button appears on every thumbnail, and a large one on the video you are watching." %}</li>
+    </ol>
+    <p>{% trans "Step-by-step instructions, including an iOS Shortcut for the YouTube app, are in userscript/README.md in the repository." %}</p>
+    <p>{% trans "The script contains your user token - share it only with people who may add downloads." %}</p>
+</div>
+
+<script>
+(function () {
+    document.getElementById('copy-script').addEventListener('click', function () {
+        const area = document.getElementById('script');
+        const button = this;
+        const done = () => {
+            button.textContent = '{% trans "Copied!" as t %}{{ t|escapejs }}';
+            setTimeout(() => { button.textContent = '{% trans "Copy script" as t %}{{ t|escapejs }}'; }, 1500);
+        };
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(area.value).then(done);
+        } else {
+            area.select();
+            document.execCommand('copy');
+            done();
+        }
+    });
+})();
+</script>
+{% endblock %}

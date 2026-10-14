@@ -101,6 +101,11 @@ UNFOLD = {
                         'icon': 'bookmark',
                     },
                     {
+                        'title': _('YouTube Button'),
+                        'link': '/admin/tools/youtube-button/',
+                        'icon': 'smart_display',
+                    },
+                    {
                         'title': _('Feed Links'),
                         'link': '/admin/tools/feeds/',
                         'icon': 'rss_feed',
