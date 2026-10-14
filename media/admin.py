@@ -9,6 +9,9 @@ from django.db.models.functions import Abs
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, mark_safe
+from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
+from django.utils.translation import ngettext
 from unfold.admin import ModelAdmin as UnfoldModelAdmin
 
 from media.models import MediaGroup, MediaItem
@@ -97,7 +100,9 @@ def _make_sync_action(max_videos):
         modeladmin.run_channel_sync(request, queryset, max_videos=max_videos)
 
     sync_action.__name__ = f'sync_youtube_last_{max_videos}'
-    sync_action.short_description = f'Sync YouTube channel - newest {max_videos} videos'
+    sync_action.short_description = gettext_lazy(
+        'Sync YouTube channel - newest %(count)s videos'
+    ) % {'count': max_videos}
     return sync_action
 
 
@@ -111,7 +116,8 @@ class MediaGroupAdminForm(forms.ModelForm):
         # "Notify on download" with nobody to notify would look switched on and do nothing
         if cleaned.get('notify_on_download') and not cleaned.get('notify_users'):
             self.add_error(
-                'notify_users', 'Pick at least one user to notify, or untick "notify on download".'
+                'notify_users',
+                _('Pick at least one user to notify, or untick "notify on download".'),
             )
         return cleaned
 
@@ -157,10 +163,13 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             },
         ),
         (
-            'Approval & notifications',
+            gettext_lazy('Approval & notifications'),
             {'fields': ['require_approval', 'notify_on_download', 'notify_users']},
         ),
-        ('Auto-delete', {'fields': ['auto_delete_enabled', 'auto_delete_after_days']}),
+        (
+            gettext_lazy('Auto-delete'),
+            {'fields': ['auto_delete_enabled', 'auto_delete_after_days']},
+        ),
     ]
     actions = [
         'sync_youtube_now',
@@ -177,17 +186,21 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         if group.require_approval and not group.notify_users.exists():
             self.message_user(
                 request,
-                f'"{group.name}" asks before downloading but notifies nobody. New uploads '
-                f'will wait under "Awaiting Approval" in the admin.',
+                _(
+                    '"%(group)s" asks before downloading but notifies nobody. New uploads '
+                    'will wait under "Awaiting Approval" in the admin.'
+                )
+                % {'group': group.name},
                 level=messages.WARNING,
             )
 
     def auto_delete_display(self, obj):
         if not obj.auto_delete_enabled:
             return '—'
-        return f'{obj.auto_delete_after_days} days'
+        days = obj.auto_delete_after_days
+        return ngettext('%(count)s day', '%(count)s days', days) % {'count': days}
 
-    auto_delete_display.short_description = 'Auto-delete'
+    auto_delete_display.short_description = gettext_lazy('Auto-delete')
 
     def delete_expired_items(self, request, queryset):
         """Run the daily auto-delete right now for the selected groups."""
@@ -197,20 +210,28 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
 
         enabled = queryset.filter(auto_delete_enabled=True)
         if not enabled.exists():
-            self.message_user(request, 'None of the selected groups has auto-delete switched on.')
+            self.message_user(
+                request, _('None of the selected groups has auto-delete switched on.')
+            )
             return
 
         deleted = cleanup_expired_group_items(enabled)
         self.message_user(
-            request, f"Deleted {deleted} item(s) past their group's retention period."
+            request,
+            ngettext(
+                "Deleted %(count)s item past its group's retention period.",
+                "Deleted %(count)s items past their group's retention period.",
+                deleted,
+            )
+            % {'count': deleted},
         )
 
-    delete_expired_items.short_description = 'Auto-delete expired items now'
+    delete_expired_items.short_description = gettext_lazy('Auto-delete expired items now')
 
     def item_count_display(self, obj):
         return obj.items.count()
 
-    item_count_display.short_description = 'Items'
+    item_count_display.short_description = gettext_lazy('Items')
 
     def youtube_sync_display(self, obj):
         if not obj.youtube_channel_url:
@@ -219,10 +240,10 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         return format_html(
             '<span title="{}">▶ {}</span>',
             obj.youtube_channel_url,
-            last.strftime('%Y-%m-%d %H:%M') if last else 'never synced',
+            last.strftime('%Y-%m-%d %H:%M') if last else _('never synced'),
         )
 
-    youtube_sync_display.short_description = 'YouTube sync'
+    youtube_sync_display.short_description = gettext_lazy('YouTube sync')
 
     def run_channel_sync(self, request, queryset, max_videos=None):
         """Queue the newest uploads of every selected channel.
@@ -242,7 +263,7 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         groups = list(queryset.exclude(youtube_channel_url=''))
         if not groups:
             self.message_user(
-                request, 'None of the selected groups has a YouTube channel configured.'
+                request, _('None of the selected groups has a YouTube channel configured.')
             )
             return
 
@@ -255,21 +276,25 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 queued += len(items)
 
         depth = max_videos or settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS
-        message = (
-            f'Checked the newest {depth} upload(s) of {len(groups)} channel(s): '
-            f'queued {queued} new item(s). They are released a few at a time by the '
-            f'paced download queue.'
-        )
+        message = _(
+            'Checked the newest %(depth)s upload(s) of %(channels)s channel(s): '
+            'queued %(queued)s new item(s). They are released a few at a time by the '
+            'paced download queue.'
+        ) % {'depth': depth, 'channels': len(groups), 'queued': queued}
         if awaiting:
-            message += f' {awaiting} new item(s) are awaiting your approval.'
+            message += ' ' + ngettext(
+                '%(count)s new item is awaiting your approval.',
+                '%(count)s new items are awaiting your approval.',
+                awaiting,
+            ) % {'count': awaiting}
         self.message_user(request, message)
 
     def sync_youtube_now(self, request, queryset):
         self.run_channel_sync(request, queryset)
 
-    sync_youtube_now.short_description = (
-        f'Sync YouTube channel now (newest {settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS} only)'
-    )
+    sync_youtube_now.short_description = gettext_lazy(
+        'Sync YouTube channel now (newest %(count)s only)'
+    ) % {'count': settings.STASHCAST_YOUTUBE_SYNC_MAX_VIDEOS}
 
     def download_entire_channel(self, request, queryset):
         """Queue every upload on the channel, not just the newest few.
@@ -287,7 +312,7 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
 
         if not groups:
             self.message_user(
-                request, 'None of the selected groups has a YouTube channel configured.'
+                request, _('None of the selected groups has a YouTube channel configured.')
             )
             return
 
@@ -295,12 +320,17 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         batch = settings.STASHCAST_DOWNLOAD_QUEUE_BATCH
         self.message_user(
             request,
-            f'Scanning {len(groups)} channel(s) in the background. Every upload found is '
-            f'added to the paced queue and downloaded {batch} at a time every '
-            f'{interval} min - watch it with "./manage.py download_queue".',
+            _(
+                'Scanning %(channels)s channel(s) in the background. Every upload found is '
+                'added to the paced queue and downloaded %(batch)s at a time every '
+                '%(interval)s min - watch it with "./manage.py download_queue".'
+            )
+            % {'channels': len(groups), 'batch': batch, 'interval': interval},
         )
 
-    download_entire_channel.short_description = 'Download ENTIRE channel (paced, background)'
+    download_entire_channel.short_description = gettext_lazy(
+        'Download ENTIRE channel (paced, background)'
+    )
 
     def transcribe_group_items(self, request, queryset):
         """Transcribe every downloaded item in the selected groups.
@@ -313,30 +343,37 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         if not settings.STASHCAST_WHISPER_ENABLED:
             self.message_user(
                 request,
-                'Speech to text is switched off. Set STASHCAST_WHISPER_ENABLED=true and '
-                'point STASHCAST_WHISPER_URI at your Wyoming server.',
+                _(
+                    'Speech to text is switched off. Set STASHCAST_WHISPER_ENABLED=true and '
+                    'point STASHCAST_WHISPER_URI at your Wyoming server.'
+                ),
                 level=messages.WARNING,
             )
             return
         from media.tasks import queue_transcription
 
-        items = MediaItem.objects.filter(
-            group__in=queryset, status=MediaItem.STATUS_READY
-        ).exclude(content_path='')
+        items = MediaItem.objects.filter(group__in=queryset, status=MediaItem.STATUS_READY).exclude(
+            content_path=''
+        )
         count = queue_transcription(items)
 
         if not count:
-            self.message_user(request, 'The selected groups hold no downloaded items.')
+            self.message_user(request, _('The selected groups hold no downloaded items.'))
             return
 
-        language = settings.STASHCAST_WHISPER_LANGUAGE or 'auto-detect'
+        language = settings.STASHCAST_WHISPER_LANGUAGE or _('auto-detect')
         self.message_user(
             request,
-            f'Transcribing {count} item(s) from {queryset.count()} group(s), '
-            f'language: {language}. Watch the Transcript column on the item list.',
+            _(
+                'Transcribing %(count)s item(s) from %(groups)s group(s), '
+                'language: %(language)s. Watch the Transcript column on the item list.'
+            )
+            % {'count': count, 'groups': queryset.count(), 'language': language},
         )
 
-    transcribe_group_items.short_description = 'Create transcript for all items in group' 
+    transcribe_group_items.short_description = gettext_lazy(
+        'Create transcript for all items in group'
+    )
 
     def image_thumbnail(self, obj):
         url = build_group_image_url(obj)
@@ -348,19 +385,18 @@ class MediaGroupAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             )
         return '—'
 
-    image_thumbnail.short_description = 'Image'
+    image_thumbnail.short_description = gettext_lazy('Image')
 
     def image_preview(self, obj):
         url = build_group_image_url(obj)
         if url:
             return format_html(
-                '<img src="{}" style="max-height: 200px; max-width: 100%; '
-                'border-radius: 6px;">',
+                '<img src="{}" style="max-height: 200px; max-width: 100%; border-radius: 6px;">',
                 url,
             )
-        return 'No image uploaded'
+        return _('No image uploaded')
 
-    image_preview.short_description = 'Image preview'
+    image_preview.short_description = gettext_lazy('Image preview')
 
 
 # Attach the generated "sync newest N" actions. They are set on the class rather than
@@ -378,15 +414,18 @@ class DurationCheckFilter(admin.SimpleListFilter):
     the files first - anything unmeasured lands in "not checked yet", never in "ok".
     """
 
-    title = 'Duration'
+    title = gettext_lazy('Duration')
     parameter_name = 'duration_check'
 
     def lookups(self, request, model_admin):
         tolerance = settings.STASHCAST_DURATION_TOLERANCE_SECONDS
         return [
-            ('incomplete', f'Incomplete (off by more than {tolerance}s)'),
-            ('ok', 'Complete'),
-            ('unchecked', 'Not checked yet'),
+            (
+                'incomplete',
+                _('Incomplete (off by more than %(seconds)ss)') % {'seconds': tolerance},
+            ),
+            ('ok', _('Complete')),
+            ('unchecked', _('Not checked yet')),
         ]
 
     def queryset(self, request, queryset):
@@ -463,10 +502,10 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
     ]
 
     fieldsets = [
-        ('Identification', {'fields': ['guid', 'slug', 'source_url']}),
-        ('Status', {'fields': ['status', 'group', 'error_message']}),
+        (gettext_lazy('Identification'), {'fields': ['guid', 'slug', 'source_url']}),
+        (gettext_lazy('Status'), {'fields': ['status', 'group', 'error_message']}),
         (
-            'Media Info',
+            gettext_lazy('Media Info'),
             {
                 'fields': [
                     'requested_type',
@@ -480,7 +519,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             },
         ),
         (
-            'Files',
+            gettext_lazy('Files'),
             {
                 'fields': [
                     'content_path',
@@ -492,9 +531,9 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 ]
             },
         ),
-        ('Processing', {'fields': ['ytdlp_args', 'ffmpeg_args']}),
+        (gettext_lazy('Processing'), {'fields': ['ytdlp_args', 'ffmpeg_args']}),
         (
-            'Metadata',
+            gettext_lazy('Metadata'),
             {
                 'fields': [
                     'extractor',
@@ -503,9 +542,9 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 ]
             },
         ),
-        ('Summary', {'fields': ['summary']}),
+        (gettext_lazy('Summary'), {'fields': ['summary']}),
         (
-            'Transcript',
+            gettext_lazy('Transcript'),
             {
                 'fields': [
                     'transcript_status',
@@ -515,9 +554,9 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 ]
             },
         ),
-        ('Logs & Preview', {'fields': ['log_display', 'preview_display']}),
+        (gettext_lazy('Logs & Preview'), {'fields': ['log_display', 'preview_display']}),
         (
-            'Timestamps',
+            gettext_lazy('Timestamps'),
             {'fields': ['created_at', 'updated_at', 'downloaded_at', 'archived_at']},
         ),
     ]
@@ -554,24 +593,22 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             waiting_until = timezone.localtime(obj.next_attempt_at)
             attempt = obj.download_attempts + 1
             return format_html(
-                '<span title="Waiting out the retry backoff; not released until then.">'
-                '&#9203; {} (try {})</span>',
+                '<span title="{}">&#9203; {} ({})</span>',
+                _('Waiting out the retry backoff; not released until then.'),
                 waiting_until.strftime('%H:%M'),
-                attempt,
+                _('try %(attempt)s') % {'attempt': attempt},
             )
 
         ahead = (
-            MediaItem.objects.filter(
-                status=MediaItem.STATUS_QUEUED, created_at__lt=obj.created_at
-            )
+            MediaItem.objects.filter(status=MediaItem.STATUS_QUEUED, created_at__lt=obj.created_at)
             .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
             .count()
         )
         return format_html(
-            '<span title="Release order: oldest queued item first.">{}</span>', ahead + 1
+            '<span title="{}">{}</span>', _('Release order: oldest queued item first.'), ahead + 1
         )
 
-    queue_position_display.short_description = 'Queue'
+    queue_position_display.short_description = gettext_lazy('Queue')
     queue_position_display.admin_order_field = 'created_at'
 
     def duration_check_display(self, obj):
@@ -582,28 +619,33 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         """
         gap = obj.duration_gap_seconds
         if gap is None:
-            return mark_safe(
-                '<span style="opacity: .4" title="Not measured yet - run '
-                './manage.py check_durations or the &quot;Check file duration&quot; '
-                'action.">&mdash;</span>'
+            return format_html(
+                '<span style="opacity: .4" title="{}">&mdash;</span>',
+                _(
+                    'Not measured yet - run ./manage.py check_durations or the '
+                    '"Check file duration" action.'
+                ),
             )
 
         tolerance = settings.STASHCAST_DURATION_TOLERANCE_SECONDS
-        expected = obj.duration_seconds
-        actual = obj.file_duration_seconds
+        values = {'expected': obj.duration_seconds, 'actual': obj.file_duration_seconds}
         if gap <= tolerance:
             return format_html(
-                '<span title="Source says {}s, file plays {}s.">ok</span>', expected, actual
+                '<span title="{}">{}</span>',
+                _('Source says %(expected)ss, file plays %(actual)ss.') % values,
+                _('ok'),
             )
         return format_html(
-            '<span style="color: #dc3545" title="Source says {}s but the file plays only '
-            '{}s - the download is incomplete, fetch it again.">short {}s</span>',
-            expected,
-            actual,
-            gap,
+            '<span style="color: #dc3545" title="{}">{}</span>',
+            _(
+                'Source says %(expected)ss but the file plays only %(actual)ss - the '
+                'download is incomplete, fetch it again.'
+            )
+            % values,
+            _('short %(gap)ss') % {'gap': gap},
         )
 
-    duration_check_display.short_description = 'Duration'
+    duration_check_display.short_description = gettext_lazy('Duration')
     duration_check_display.admin_order_field = 'file_duration_seconds'
 
     def check_file_durations(self, request, queryset):
@@ -618,15 +660,18 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             count += 1
 
         if not count:
-            self.message_user(request, 'No downloaded items selected.')
+            self.message_user(request, _('No downloaded items selected.'))
             return
         self.message_user(
             request,
-            f'Measuring {count} file(s) in the background. Reload in a moment, then use '
-            f'the "Duration" filter to list the incomplete ones.',
+            _(
+                'Measuring %(count)s file(s) in the background. Reload in a moment, then '
+                'use the "Duration" filter to list the incomplete ones.'
+            )
+            % {'count': count},
         )
 
-    check_file_durations.short_description = 'Check file duration against source'
+    check_file_durations.short_description = gettext_lazy('Check file duration against source')
 
     def create_transcripts(self, request, queryset):
         """Send the selected media to the speech-to-text server."""
@@ -635,8 +680,10 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         if not settings.STASHCAST_WHISPER_ENABLED:
             self.message_user(
                 request,
-                'Speech to text is switched off. Set STASHCAST_WHISPER_ENABLED=true and '
-                'point STASHCAST_WHISPER_URI at your Wyoming server.',
+                _(
+                    'Speech to text is switched off. Set STASHCAST_WHISPER_ENABLED=true and '
+                    'point STASHCAST_WHISPER_URI at your Wyoming server.'
+                ),
                 level=messages.WARNING,
             )
             return
@@ -647,17 +694,24 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         )
 
         if not count:
-            self.message_user(request, 'No downloaded items selected.')
+            self.message_user(request, _('No downloaded items selected.'))
             return
-        language = settings.STASHCAST_WHISPER_LANGUAGE or 'auto-detect'
+        language = settings.STASHCAST_WHISPER_LANGUAGE or _('auto-detect')
         self.message_user(
             request,
-            f'Transcribing {count} item(s) in the background against '
-            f'{settings.STASHCAST_WHISPER_URI}, language: {language}. Long recordings '
-            f'take a while - the Transcript column fills in as they finish.',
+            _(
+                'Transcribing %(count)s item(s) in the background against %(server)s, '
+                'language: %(language)s. Long recordings take a while - the Transcript '
+                'column fills in as they finish.'
+            )
+            % {
+                'count': count,
+                'server': settings.STASHCAST_WHISPER_URI,
+                'language': language,
+            },
         )
 
-    create_transcripts.short_description = 'Create transcript'
+    create_transcripts.short_description = gettext_lazy('Create transcript')
 
     def remove_from_transcription_queue(self, request, queryset):
         """Free the transcription queue by dropping the selected waiting items."""
@@ -668,18 +722,24 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         cancelled, running = cancel_transcription(queryset)
 
         if not cancelled and not running:
-            self.message_user(request, 'None of the selected items was waiting to be transcribed.')
+            self.message_user(
+                request, _('None of the selected items was waiting to be transcribed.')
+            )
             return
 
-        message = f'Removed {cancelled} item(s) from the transcription queue.'
+        message = _('Removed %(count)s item(s) from the transcription queue.') % {
+            'count': cancelled
+        }
         if running:
-            message += (
-                f' {running} item(s) are being transcribed right now and were left to '
-                f'finish - work already under way cannot be interrupted.'
-            )
+            message += ' ' + _(
+                '%(count)s item(s) are being transcribed right now and were left to '
+                'finish - work already under way cannot be interrupted.'
+            ) % {'count': running}
         self.message_user(request, message)
 
-    remove_from_transcription_queue.short_description = 'Remove from transcription queue'
+    remove_from_transcription_queue.short_description = gettext_lazy(
+        'Remove from transcription queue'
+    )
 
     def remove_from_download_queue(self, request, queryset):
         """Free the download queue by dropping the selected waiting items."""
@@ -690,16 +750,19 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         cancelled = cancel_download(queryset)
 
         if not cancelled:
-            self.message_user(request, 'None of the selected items was waiting to download.')
+            self.message_user(request, _('None of the selected items was waiting to download.'))
             return
 
         self.message_user(
             request,
-            f'Removed {cancelled} item(s) from the download queue. They are kept as '
-            f'errors saying why - use "Requeue selected items" to put them back.',
+            _(
+                'Removed %(count)s item(s) from the download queue. They are kept as '
+                'errors saying why - use "Requeue selected items" to put them back.'
+            )
+            % {'count': cancelled},
         )
 
-    remove_from_download_queue.short_description = 'Remove from download queue' 
+    remove_from_download_queue.short_description = gettext_lazy('Remove from download queue')
 
     def approve_items(self, request, queryset):
         """Download the selected items that are awaiting approval."""
@@ -712,11 +775,19 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             for item in queryset.filter(status=MediaItem.STATUS_AWAITING_APPROVAL)
         )
         if not approved:
-            self.message_user(request, 'None of the selected items was awaiting approval.')
+            self.message_user(request, _('None of the selected items was awaiting approval.'))
             return
-        self.message_user(request, f'Downloading {approved} approved item(s).')
+        self.message_user(
+            request,
+            ngettext(
+                'Downloading %(count)s approved item.',
+                'Downloading %(count)s approved items.',
+                approved,
+            )
+            % {'count': approved},
+        )
 
-    approve_items.short_description = 'Approve: download selected items'
+    approve_items.short_description = gettext_lazy('Approve: download selected items')
 
     def reject_items(self, request, queryset):
         """Reject the selected items that are awaiting approval."""
@@ -725,60 +796,67 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         from media.operations import reject_item
 
         rejected = sum(
-            reject_item(item)
-            for item in queryset.filter(status=MediaItem.STATUS_AWAITING_APPROVAL)
+            reject_item(item) for item in queryset.filter(status=MediaItem.STATUS_AWAITING_APPROVAL)
         )
         if not rejected:
-            self.message_user(request, 'None of the selected items was awaiting approval.')
+            self.message_user(request, _('None of the selected items was awaiting approval.'))
             return
         self.message_user(
             request,
-            f'Rejected {rejected} item(s). They are kept without files so the channel '
-            f'sync does not offer them again.',
+            _(
+                'Rejected %(count)s item(s). They are kept without files so the channel '
+                'sync does not offer them again.'
+            )
+            % {'count': rejected},
         )
 
-    reject_items.short_description = 'Reject selected items'
+    reject_items.short_description = gettext_lazy('Reject selected items')
 
     def transcript_display(self, obj):
         """Where this item is in the transcription process, at a glance."""
         if obj.transcript_status == MediaItem.TRANSCRIPT_QUEUED:
-            return mark_safe('<span title="Waiting for the worker">&#9203; waiting</span>')
+            return format_html(
+                '<span title="{}">&#9203; {}</span>', _('Waiting for the worker'), _('waiting')
+            )
         if obj.transcript_status == MediaItem.TRANSCRIPT_RUNNING:
-            return mark_safe(
-                '<span style="color: #17a2b8" title="Being transcribed right now">'
-                '&#9679; transcribing</span>'
+            return format_html(
+                '<span style="color: #17a2b8" title="{}">&#9679; {}</span>',
+                _('Being transcribed right now'),
+                _('transcribing'),
             )
         if obj.transcript_status == MediaItem.TRANSCRIPT_FAILED:
             return format_html(
-                '<span style="color: #dc3545" title="{}">failed</span>',
-                obj.transcript_error or 'Unknown error',
+                '<span style="color: #dc3545" title="{}">{}</span>',
+                obj.transcript_error or _('Unknown error'),
+                _('failed'),
             )
         if obj.transcript:
+            characters = len(obj.transcript)
+            words = len(obj.transcript.split())
             return format_html(
-                '<span title="{} characters">{} words</span>',
-                len(obj.transcript),
-                len(obj.transcript.split()),
+                '<span title="{}">{}</span>',
+                ngettext('%(count)s character', '%(count)s characters', characters)
+                % {'count': characters},
+                ngettext('%(count)s word', '%(count)s words', words) % {'count': words},
             )
         return mark_safe('<span style="opacity: .4">&mdash;</span>')
 
-    transcript_display.short_description = 'Transcript'
+    transcript_display.short_description = gettext_lazy('Transcript')
     transcript_display.admin_order_field = 'transcript_status'
 
     def transcript_text_display(self, obj):
         """The transcript itself, readable on the item page."""
         if obj.transcript_error:
-            return format_html(
-                '<p style="color: #dc3545">{}</p>', obj.transcript_error
-            )
+            return format_html('<p style="color: #dc3545">{}</p>', obj.transcript_error)
         if not obj.transcript:
-            return 'No transcript yet'
+            return _('No transcript yet')
         return format_html(
             '<pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; '
             'max-height: 400px; overflow: auto; white-space: pre-wrap;">{}</pre>',
             obj.transcript,
         )
 
-    transcript_text_display.short_description = 'Transcript text' 
+    transcript_text_display.short_description = gettext_lazy('Transcript text')
 
     def publish_date_display(self, obj):
         """Publication date on the source platform, or a clear marker when unknown.
@@ -788,10 +866,13 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         """
         if not obj.publish_date:
             # mark_safe, not format_html: a constant string with no interpolated data
-            return mark_safe(
-                '<span style="opacity: .5" title="No publication date &ndash; feeds fall '
-                'back to the download date. Use the &quot;Fetch publication date from '
-                'source&quot; action.">&mdash; not set</span>'
+            return format_html(
+                '<span style="opacity: .5" title="{}">&mdash; {}</span>',
+                _(
+                    'No publication date - feeds fall back to the download date. Use the '
+                    '"Fetch publication date from source" action.'
+                ),
+                _('not set'),
             )
         local = timezone.localtime(obj.publish_date)
         return format_html(
@@ -800,7 +881,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             local.strftime('%Y-%m-%d'),
         )
 
-    publish_date_display.short_description = 'Published'
+    publish_date_display.short_description = gettext_lazy('Published')
     publish_date_display.admin_order_field = 'publish_date'
 
     def file_size_display(self, obj):
@@ -809,21 +890,21 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             return f'{size_mb:.2f} MB'
         return '-'
 
-    file_size_display.short_description = 'File Size'
+    file_size_display.short_description = gettext_lazy('File Size')
 
     def action_links(self, obj):
         edit_url = reverse('item_detail', args=[obj.guid])
         links = [
-            f'<a href="{edit_url}" alt="View" title="View">👁️</a>',
-            f'<a href="{edit_url}" alt="Edit" title="Edit">✏️</a>',
+            format_html('<a href="{}" title="{}">👁️</a>', edit_url, _('View')),
+            format_html('<a href="{}" title="{}">✏️</a>', edit_url, _('Edit')),
         ]
         if obj.log_path:
             # Link to the admin change page with log anchor
             admin_url = reverse('admin:media_mediaitem_change', args=[obj.guid])
-            links.append(f'<a href="{admin_url}#log" alt="Logs" title="Logs">📜</a>')
+            links.append(format_html('<a href="{}#log" title="{}">📜</a>', admin_url, _('Logs')))
         return mark_safe(' '.join(links))
 
-    action_links.short_description = 'Actions'
+    action_links.short_description = gettext_lazy('Actions')
 
     def preview_display(self, obj):
         if obj.status != MediaItem.STATUS_READY:
@@ -843,11 +924,11 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
 
     def log_display(self, obj):
         if not obj.log_path:
-            return 'No log file'
+            return _('No log file')
 
         log_path = obj.get_absolute_log_path()
         if not log_path:
-            return 'No log file'
+            return _('No log file')
 
         try:
             with open(log_path, 'r') as f:
@@ -858,9 +939,9 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
                 log_content,
             )
         except Exception as e:
-            return f'Error reading log: {e}'
+            return _('Error reading log: %(error)s') % {'error': e}
 
-    log_display.short_description = 'Logs'
+    log_display.short_description = gettext_lazy('Logs')
 
     def refetch_items(self, request, queryset):
         if is_demo_readonly(request.user):
@@ -872,9 +953,13 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             item.save()
             process_media(item.guid)
             count += 1
-        self.message_user(request, f'Re-fetching {count} items.')
+        self.message_user(
+            request,
+            ngettext('Re-fetching %(count)s item.', 'Re-fetching %(count)s items.', count)
+            % {'count': count},
+        )
 
-    refetch_items.short_description = 'Re-fetch selected items (immediately)'
+    refetch_items.short_description = gettext_lazy('Re-fetch selected items (immediately)')
 
     def requeue_items(self, request, queryset):
         """Put items back into the paced queue with a fresh set of attempts.
@@ -888,9 +973,7 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         # Requeuing something a worker is downloading right now would start a second run
         # against the same tmp directory and corrupt the file. Items whose download has
         # genuinely stalled are picked up by recover_stuck_items instead.
-        stale_before = timezone.now() - timedelta(
-            minutes=settings.STASHCAST_STUCK_TIMEOUT_MINUTES
-        )
+        stale_before = timezone.now() - timedelta(minutes=settings.STASHCAST_STUCK_TIMEOUT_MINUTES)
         count = 0
         skipped = 0
         for item in queryset:
@@ -904,12 +987,14 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             item.save()
             count += 1
 
-        message = f'Requeued {count} item(s) for the paced download queue.'
+        message = _('Requeued %(count)s item(s) for the paced download queue.') % {'count': count}
         if skipped:
-            message += f' Skipped {skipped} item(s) that are downloading right now.'
+            message += ' ' + _('Skipped %(count)s item(s) that are downloading right now.') % {
+                'count': skipped
+            }
         self.message_user(request, message)
 
-    requeue_items.short_description = 'Requeue selected items (paced queue)'
+    requeue_items.short_description = gettext_lazy('Requeue selected items (paced queue)')
 
     def refresh_publish_dates(self, request, queryset):
         """Fetch the original publication date from the source for selected items.
@@ -928,11 +1013,14 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             count += 1
         self.message_user(
             request,
-            f'Fetching publication dates for {count} item(s) in the background. '
-            f'Reload in a moment to see them.',
+            _(
+                'Fetching publication dates for %(count)s item(s) in the background. '
+                'Reload in a moment to see them.'
+            )
+            % {'count': count},
         )
 
-    refresh_publish_dates.short_description = 'Fetch publication date from source'
+    refresh_publish_dates.short_description = gettext_lazy('Fetch publication date from source')
 
     def repair_videos(self, request, queryset):
         """Rewrite selected videos into an MP4 that Apple Podcasts / iOS can play.
@@ -950,15 +1038,18 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             count += 1
 
         if not count:
-            self.message_user(request, 'No video items selected.')
+            self.message_user(request, _('No video items selected.'))
             return
         self.message_user(
             request,
-            f'Checking {count} video(s) in the background; anything that cannot play on '
-            f'Apple Podcasts is repacked as MP4/H.264/AAC.',
+            _(
+                'Checking %(count)s video(s) in the background; anything that cannot play '
+                'on Apple Podcasts is repacked as MP4/H.264/AAC.'
+            )
+            % {'count': count},
         )
 
-    repair_videos.short_description = 'Repair video for Apple Podcasts / iOS'
+    repair_videos.short_description = gettext_lazy('Repair video for Apple Podcasts / iOS')
 
     def regenerate_summaries(self, request, queryset):
         if is_demo_readonly(request.user):
@@ -968,9 +1059,17 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
             if item.subtitle_path:
                 generate_summary(item.guid)
                 count += 1
-        self.message_user(request, f'Enqueued summary generation for {count} items.')
+        self.message_user(
+            request,
+            ngettext(
+                'Enqueued summary generation for %(count)s item.',
+                'Enqueued summary generation for %(count)s items.',
+                count,
+            )
+            % {'count': count},
+        )
 
-    regenerate_summaries.short_description = 'Regenerate summaries'
+    regenerate_summaries.short_description = gettext_lazy('Regenerate summaries')
 
     def archive_items(self, request, queryset):
         if is_demo_readonly(request.user):
@@ -978,9 +1077,13 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         count = queryset.filter(status=MediaItem.STATUS_READY).update(
             status=MediaItem.STATUS_ARCHIVED, archived_at=timezone.now()
         )
-        self.message_user(request, f'Archived {count} items.')
+        self.message_user(
+            request,
+            ngettext('Archived %(count)s item.', 'Archived %(count)s items.', count)
+            % {'count': count},
+        )
 
-    archive_items.short_description = 'Archive selected items'
+    archive_items.short_description = gettext_lazy('Archive selected items')
 
     def unarchive_items(self, request, queryset):
         if is_demo_readonly(request.user):
@@ -988,6 +1091,10 @@ class MediaItemAdmin(UnfoldModelAdmin, DemoReadOnlyAdminMixin):
         count = queryset.filter(status=MediaItem.STATUS_ARCHIVED).update(
             status=MediaItem.STATUS_READY, archived_at=None
         )
-        self.message_user(request, f'Unarchived {count} items.')
+        self.message_user(
+            request,
+            ngettext('Unarchived %(count)s item.', 'Unarchived %(count)s items.', count)
+            % {'count': count},
+        )
 
-    unarchive_items.short_description = 'Unarchive selected items'
+    unarchive_items.short_description = gettext_lazy('Unarchive selected items')

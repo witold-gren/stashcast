@@ -16,6 +16,7 @@ from pathlib import Path
 
 import environ
 from django.templatetags.static import static
+from django.utils.translation import gettext_lazy as _
 
 env = environ.Env(
     # set casting, default value
@@ -77,60 +78,60 @@ UNFOLD = {
         'show_all_applications': True,
         'navigation': [
             {
-                'title': 'Tools',
+                'title': _('Tools'),
                 'items': [
                     {
-                        'title': 'Add URL',
+                        'title': _('Add URL'),
                         'link': '/admin/tools/add-url/',
                         'icon': 'add_link',
                     },
                     {
-                        'title': 'Grid View',
+                        'title': _('Grid View'),
                         'link': '/admin/tools/grid/',
                         'icon': 'grid_view',
                     },
                     {
-                        'title': 'List View',
+                        'title': _('List View'),
                         'link': '/admin/tools/list/',
                         'icon': 'view_list',
                     },
                     {
-                        'title': 'Bookmarklet',
+                        'title': _('Bookmarklet'),
                         'link': '/admin/tools/bookmarklet/',
                         'icon': 'bookmark',
                     },
                     {
-                        'title': 'Feed Links',
+                        'title': _('Feed Links'),
                         'link': '/admin/tools/feeds/',
                         'icon': 'rss_feed',
                     },
                     {
-                        'title': 'Notifications',
+                        'title': _('Notifications'),
                         'link': '/admin/tools/notifications/',
                         'icon': 'notifications',
                     },
                     {
-                        'title': 'About',
+                        'title': _('About'),
                         'link': '/admin/tools/preferences/',
                         'icon': 'info',
                     },
                     {
-                        'title': 'Site Home',
+                        'title': _('Site Home'),
                         'link': '/',
                         'icon': 'home',
                     },
                 ],
             },
             {
-                'title': 'Administration',
+                'title': _('Administration'),
                 'items': [
                     {
-                        'title': 'Media Items',
+                        'title': _('Media Items'),
                         'link': '/admin/media/mediaitem/',
                         'icon': 'play_circle',
                     },
                     {
-                        'title': 'Awaiting Approval',
+                        'title': _('Awaiting Approval'),
                         'link': '/admin/media/mediaitem/?status__exact=AWAITING_APPROVAL',
                         'icon': 'pending_actions',
                     },

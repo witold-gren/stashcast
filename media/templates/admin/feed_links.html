@@ -346,15 +346,15 @@
             const input = document.getElementById(targetId);
             try {
                 await navigator.clipboard.writeText(input.value);
-                btn.textContent = 'Copied!';
+                btn.textContent = '{% trans "Copied!" as t %}{{ t|escapejs }}';
                 btn.classList.add('copied');
                 setTimeout(() => {
-                    btn.textContent = 'Copy';
+                    btn.textContent = '{% trans "Copy" as t %}{{ t|escapejs }}';
                     btn.classList.remove('copied');
                 }, 1500);
             } catch (e) {
-                btn.textContent = 'Failed';
-                setTimeout(() => btn.textContent = 'Copy', 1500);
+                btn.textContent = '{% trans "Failed" as t %}{{ t|escapejs }}';
+                setTimeout(() => btn.textContent = '{% trans "Copy" as t %}{{ t|escapejs }}', 1500);
             }
         });
     });

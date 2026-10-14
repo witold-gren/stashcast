@@ -15,6 +15,8 @@ best-effort: an unrecognised message simply falls back to the normal retry behav
 import re
 from datetime import timedelta
 
+from django.utils.translation import gettext as _
+
 # The download can never succeed as configured - retrying only burns attempts.
 CATEGORY_PERMANENT = 'permanent'
 # Not available yet, but will be at a known-ish time (premiere, scheduled live).
@@ -154,14 +156,14 @@ def explain_download_error(category):
         str: Hint for the user, or '' when there is nothing useful to add.
     """
     if category == CATEGORY_PERMANENT:
-        return (
+        return _(
             'This video cannot be downloaded with the current configuration '
             '(members-only, private, removed or region-blocked). Not retrying.'
         )
     if category == CATEGORY_SCHEDULED:
-        return 'Not published yet (premiere or scheduled live); waiting until it airs.'
+        return _('Not published yet (premiere or scheduled live); waiting until it airs.')
     if category == CATEGORY_BLOCKED:
-        return (
+        return _(
             'YouTube refused the request (bot check, sign-in or rate limit). '
             'Set STASHCAST_YTDLP_COOKIES_FILE, or a proxy - see docs/YOUTUBE_AUTH.md.'
         )

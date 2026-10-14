@@ -20,26 +20,31 @@ class MediaGroup(models.Model):
     also exposes its own RSS feed at /feeds/group/<slug>.xml.
     """
 
-    name = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(max_length=120, unique=True, blank=True, db_index=True)
+    name = models.CharField(verbose_name=_('Name'), max_length=100, unique=True)
+    slug = models.SlugField(
+        verbose_name=_('Slug'), max_length=120, unique=True, blank=True, db_index=True
+    )
     image = models.ImageField(
+        verbose_name=_('Image'),
         upload_to='group-images',
         blank=True,
         null=True,
-        help_text='Optional cover image shown as <image> in this group\'s RSS feed.',
+        help_text=_("Optional cover image shown as <image> in this group's RSS feed."),
     )
     youtube_channel_url = models.URLField(
+        verbose_name=_('YouTube channel URL'),
         max_length=2048,
         blank=True,
-        help_text=(
+        help_text=_(
             'Optional YouTube channel URL (e.g. https://www.youtube.com/@name). '
             'New uploads are periodically downloaded as audio into this group.'
         ),
     )
     youtube_last_synced_at = models.DateTimeField(
+        verbose_name=_('Last YouTube sync'),
         null=True,
         blank=True,
-        help_text='When this group was last checked for new YouTube uploads.',
+        help_text=_('When this group was last checked for new YouTube uploads.'),
     )
 
     # Values deliberately match MediaItem.REQUESTED_TYPE_AUDIO / _VIDEO so this can be
@@ -54,8 +59,9 @@ class MediaGroup(models.Model):
     ]
 
     transcript_in_description = models.BooleanField(
+        verbose_name=_('Transcript in description'),
         default=False,
-        help_text=(
+        help_text=_(
             'Also publish the transcript inside each episode description, as plain text '
             'without cue timings. For apps that ignore the transcript file - Apple '
             'Podcasts among them. Worth it for short episodes; a 60 minute one turns '
@@ -64,8 +70,9 @@ class MediaGroup(models.Model):
     )
 
     transcribe_new_downloads = models.BooleanField(
+        verbose_name=_('Transcribe new downloads'),
         default=False,
-        help_text=(
+        help_text=_(
             'Transcribe every new download in this group automatically. Requires '
             'STASHCAST_WHISPER_ENABLED; existing items are untouched - use the '
             '"Create transcript" action for those.'
@@ -73,57 +80,65 @@ class MediaGroup(models.Model):
     )
 
     download_type = models.CharField(
+        verbose_name=_('Download type'),
         max_length=10,
         choices=DOWNLOAD_TYPE_CHOICES,
         default=DOWNLOAD_TYPE_AUDIO,
-        help_text=(
+        help_text=_(
             'What to download for this group. Applies to the YouTube channel sync and '
             'to anything added to this group without an explicit type of its own.'
         ),
     )
 
     require_approval = models.BooleanField(
+        verbose_name=_('Require approval'),
         default=False,
-        help_text=(
+        help_text=_(
             'Ask before downloading new YouTube uploads. The sync only fetches the title, '
             'description and thumbnail and sends a push notification with Download / '
             'Reject buttons; nothing reaches the feed until you approve it.'
         ),
     )
     notify_on_download = models.BooleanField(
+        verbose_name=_('Notify on download'),
         default=False,
-        help_text=(
+        help_text=_(
             'Send a push notification when a new item in this group is ready. Ignored '
             'while "require approval" is on - you already hear about every upload then.'
         ),
     )
     notify_users = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
+        verbose_name=_('Notify users'),
         blank=True,
         related_name='notified_groups',
         limit_choices_to={'is_staff': True, 'is_active': True},
-        help_text=(
-            'Who receives this group\'s push notifications - approval requests and '
+        help_text=_(
+            "Who receives this group's push notifications - approval requests and "
             '"ready" notices. Nobody is notified while the list is empty.'
         ),
     )
 
     auto_delete_enabled = models.BooleanField(
+        verbose_name=_('Auto-delete enabled'),
         default=False,
-        help_text=(
+        help_text=_(
             'Delete items (files and database record) once they are older than the '
             'number of days below, counted from when they were downloaded.'
         ),
     )
     auto_delete_after_days = models.PositiveIntegerField(
+        verbose_name=_('Auto-delete after days'),
         default=90,
         validators=[MinValueValidator(1)],
-        help_text='How many days a downloaded item is kept when auto-delete is on.',
+        help_text=_('How many days a downloaded item is kept when auto-delete is on.'),
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(verbose_name=_('Created'), auto_now_add=True)
 
     class Meta:
         ordering = ['name']
+        verbose_name = _('media group')
+        verbose_name_plural = _('media groups')
 
     def __str__(self):
         return self.name
@@ -214,21 +229,34 @@ class MediaItem(models.Model):
 
     # Primary key
     guid = models.CharField(
-        max_length=21, primary_key=True, default=generate_nanoid, editable=False
+        verbose_name=_('GUID'),
+        max_length=21,
+        primary_key=True,
+        default=generate_nanoid,
+        editable=False,
     )
 
     # Basic fields
-    source_url = models.URLField(max_length=2048)
-    slug = models.SlugField(max_length=100, db_index=True)
-    media_type = models.CharField(max_length=10, choices=MEDIA_TYPE_CHOICES, blank=True)
-    requested_type = models.CharField(max_length=10, choices=REQUESTED_TYPE_CHOICES)
+    source_url = models.URLField(verbose_name=_('Source URL'), max_length=2048)
+    slug = models.SlugField(verbose_name=_('Slug'), max_length=100, db_index=True)
+    media_type = models.CharField(
+        verbose_name=_('Media type'), max_length=10, choices=MEDIA_TYPE_CHOICES, blank=True
+    )
+    requested_type = models.CharField(
+        verbose_name=_('Requested type'), max_length=10, choices=REQUESTED_TYPE_CHOICES
+    )
     status = models.CharField(
-        max_length=20, choices=STATUS_CHOICES, default=STATUS_PREFETCHING, db_index=True
+        verbose_name=_('Status'),
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PREFETCHING,
+        db_index=True,
     )
 
     # Grouping (optional user-defined group, e.g. Lessons, Kitchen)
     group = models.ForeignKey(
         MediaGroup,
+        verbose_name=_('Group'),
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -236,53 +264,62 @@ class MediaItem(models.Model):
     )
 
     # Metadata
-    title = models.CharField(max_length=500, blank=True)
-    description = models.TextField(blank=True)
-    author = models.CharField(max_length=200, blank=True)
-    publish_date = models.DateTimeField(null=True, blank=True)
-    duration_seconds = models.IntegerField(null=True, blank=True)
+    title = models.CharField(verbose_name=_('Title'), max_length=500, blank=True)
+    description = models.TextField(verbose_name=_('Description'), blank=True)
+    author = models.CharField(verbose_name=_('Author'), max_length=200, blank=True)
+    publish_date = models.DateTimeField(verbose_name=_('Publish date'), null=True, blank=True)
+    duration_seconds = models.IntegerField(
+        verbose_name=_('Duration (seconds)'), null=True, blank=True
+    )
 
     # Duration actually measured in the downloaded file. duration_seconds above comes
     # from the source metadata and is the truth; a large gap between the two means the
     # file is incomplete and should be downloaded again. Stored rather than probed on
     # demand so the admin can filter on it with a plain database query.
     file_duration_seconds = models.IntegerField(
+        verbose_name=_('File duration (seconds)'),
         null=True,
         blank=True,
-        help_text='Duration measured in the downloaded file, filled in by '
-        './manage.py check_durations.',
+        help_text=_(
+            'Duration measured in the downloaded file, filled in by ./manage.py check_durations.'
+        ),
     )
     duration_checked_at = models.DateTimeField(
+        verbose_name=_('Duration checked'),
         null=True,
         blank=True,
-        help_text='When the file duration was last measured.',
+        help_text=_('When the file duration was last measured.'),
     )
-    extractor = models.CharField(max_length=100, blank=True)
-    external_id = models.CharField(max_length=200, blank=True)
-    webpage_url = models.URLField(max_length=2048, blank=True)
+    extractor = models.CharField(verbose_name=_('Extractor'), max_length=100, blank=True)
+    external_id = models.CharField(verbose_name=_('External ID'), max_length=200, blank=True)
+    webpage_url = models.URLField(verbose_name=_('Web page URL'), max_length=2048, blank=True)
 
     # File paths (relative to slug directory)
-    content_path = models.CharField(max_length=500, blank=True)
-    thumbnail_path = models.CharField(max_length=500, blank=True)
-    subtitle_path = models.CharField(max_length=500, blank=True)
+    content_path = models.CharField(verbose_name=_('Content file'), max_length=500, blank=True)
+    thumbnail_path = models.CharField(verbose_name=_('Thumbnail file'), max_length=500, blank=True)
+    subtitle_path = models.CharField(verbose_name=_('Subtitles file'), max_length=500, blank=True)
     # Remote thumbnail reported by the source. Shown in approval notifications before
     # anything is downloaded; the local thumbnail_path takes over once it is.
-    thumbnail_url = models.URLField(max_length=2048, blank=True)
+    thumbnail_url = models.URLField(verbose_name=_('Thumbnail URL'), max_length=2048, blank=True)
 
     # Speech-to-text output. The text is kept on the record so it can be read and
     # searched here; transcript_path points at the WebVTT file served to podcast
     # clients. Separate from subtitle_path so generating a transcript never overwrites
     # subtitles that came with the video.
     transcript = models.TextField(
+        verbose_name=_('Transcript'),
         blank=True,
-        help_text='Transcript produced by the speech-to-text server.',
+        help_text=_('Transcript produced by the speech-to-text server.'),
     )
     transcript_path = models.CharField(
+        verbose_name=_('Transcript file'),
         max_length=500,
         blank=True,
-        help_text='WebVTT transcript file inside the item directory.',
+        help_text=_('WebVTT transcript file inside the item directory.'),
     )
-    transcript_created_at = models.DateTimeField(null=True, blank=True)
+    transcript_created_at = models.DateTimeField(
+        verbose_name=_('Transcript created'), null=True, blank=True
+    )
 
     # Where this item is in the transcription process. Kept apart from `status` and
     # `error_message`, which describe the download: an episode can be downloaded
@@ -301,50 +338,60 @@ class MediaItem(models.Model):
     ]
 
     transcript_status = models.CharField(
+        verbose_name=_('Transcript status'),
         max_length=10,
         blank=True,
         choices=TRANSCRIPT_STATUS_CHOICES,
         db_index=True,
-        help_text='Where this item is in the transcription process.',
+        help_text=_('Where this item is in the transcription process.'),
     )
     transcript_error = models.TextField(
+        verbose_name=_('Transcript error'),
         blank=True,
-        help_text='Why the last transcription attempt failed.',
+        help_text=_('Why the last transcription attempt failed.'),
     )
-    file_size = models.BigIntegerField(null=True, blank=True)
-    mime_type = models.CharField(max_length=100, blank=True)
+    file_size = models.BigIntegerField(verbose_name=_('File size'), null=True, blank=True)
+    mime_type = models.CharField(verbose_name=_('MIME type'), max_length=100, blank=True)
 
     # Logging
-    log_path = models.CharField(max_length=500, blank=True)
-    error_message = models.TextField(blank=True)
+    log_path = models.CharField(verbose_name=_('Log file'), max_length=500, blank=True)
+    error_message = models.TextField(verbose_name=_('Error message'), blank=True)
 
     # Processing arguments
-    ytdlp_args = models.TextField(blank=True, help_text='Additional yt-dlp arguments')
-    ffmpeg_args = models.TextField(blank=True, help_text='Additional ffmpeg arguments')
+    ytdlp_args = models.TextField(
+        verbose_name=_('yt-dlp arguments'), blank=True, help_text=_('Additional yt-dlp arguments')
+    )
+    ffmpeg_args = models.TextField(
+        verbose_name=_('ffmpeg arguments'), blank=True, help_text=_('Additional ffmpeg arguments')
+    )
 
     # Summary
-    summary = models.TextField(blank=True)
+    summary = models.TextField(verbose_name=_('Summary'), blank=True)
 
     # Timestamps
-    downloaded_at = models.DateTimeField(null=True, blank=True)
+    downloaded_at = models.DateTimeField(verbose_name=_('Downloaded'), null=True, blank=True)
 
     # Retry bookkeeping for the paced download queue
     download_attempts = models.PositiveIntegerField(
+        verbose_name=_('Download attempts'),
         default=0,
-        help_text='How many times a download has been attempted for this item.',
+        help_text=_('How many times a download has been attempted for this item.'),
     )
     next_attempt_at = models.DateTimeField(
+        verbose_name=_('Next attempt'),
         null=True,
         blank=True,
         db_index=True,
-        help_text='Earliest time the paced queue may pick this item up (retry backoff).',
+        help_text=_('Earliest time the paced queue may pick this item up (retry backoff).'),
     )
-    archived_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    archived_at = models.DateTimeField(verbose_name=_('Archived'), null=True, blank=True)
+    created_at = models.DateTimeField(verbose_name=_('Created'), auto_now_add=True)
+    updated_at = models.DateTimeField(verbose_name=_('Updated'), auto_now=True)
 
     class Meta:
         ordering = ['-publish_date', '-downloaded_at']
+        verbose_name = _('media item')
+        verbose_name_plural = _('media items')
         indexes = [
             models.Index(fields=['source_url']),
             models.Index(fields=['slug']),

@@ -393,16 +393,16 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateMode() {
         const urls = bulkUrls.value.trim().split('\n').filter(u => u.trim());
         if (urls.length > 0) {
-            modeIndicator.textContent = `Bulk (${urls.length} URLs)`;
+            modeIndicator.textContent = '{% trans "Bulk (%(count)s URLs)" as t %}{{ t|escapejs }}'.replace('%(count)s', urls.length);
             modeIndicator.classList.remove('mode-single');
             modeIndicator.classList.add('mode-bulk');
-            submitBtn.value = `Add ${urls.length} URLs to StashCast`;
+            submitBtn.value = '{% trans "Add %(count)s URLs to StashCast" as t %}{{ t|escapejs }}'.replace('%(count)s', urls.length);
             singleUrl.removeAttribute('required');
         } else {
-            modeIndicator.textContent = 'Single URL';
+            modeIndicator.textContent = '{% trans "Single URL" as t %}{{ t|escapejs }}';
             modeIndicator.classList.remove('mode-bulk');
             modeIndicator.classList.add('mode-single');
-            submitBtn.value = 'Add to StashCast';
+            submitBtn.value = '{% trans "Add to StashCast" as t %}{{ t|escapejs }}';
             singleUrl.setAttribute('required', '');
         }
     }

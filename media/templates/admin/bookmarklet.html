@@ -283,7 +283,7 @@
         const codeTextarea = document.getElementById('bookmarklet-code');
         codeTextarea.select();
         document.execCommand('copy');
-        alert('Code copied to clipboard!');
+        alert('{% trans "Code copied to clipboard!" as t %}{{ t|escapejs }}');
     }
 
     document.getElementById('base-url').addEventListener('input', generateBookmarklet);

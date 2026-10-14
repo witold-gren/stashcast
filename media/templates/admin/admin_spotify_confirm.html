@@ -356,7 +356,7 @@
                                 {% else %}{{ platform_group.grouper }}
                                 {% endif %}
                             </span>
-                            <span style="color: var(--sc-muted); font-weight: normal;">({{ platform_group.list|length }} results)</span>
+                            <span style="color: var(--sc-muted); font-weight: normal;">({% blocktrans count counter=platform_group.list|length %}{{ counter }} result{% plural %}{{ counter }} results{% endblocktrans %})</span>
                         </h2>
                     </div>
                     <div class="results-list">
@@ -468,7 +468,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!customUrl && !selectedRadio) {
             e.preventDefault();
-            alert('Please select a result or enter a custom URL.');
+            alert('{% trans "Please select a result or enter a custom URL." as t %}{{ t|escapejs }}');
         }
     });
 });

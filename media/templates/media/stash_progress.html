@@ -327,12 +327,12 @@
 
         // Status display mapping
         const statusDisplay = {
-            'QUEUED': 'Queued',
-            'PREFETCHING': 'Prefetching',
-            'DOWNLOADING': 'Downloading',
-            'PROCESSING': 'Processing',
-            'READY': 'Ready',
-            'ERROR': 'Error'
+            'QUEUED': '{% trans "Queued" as t %}{{ t|escapejs }}',
+            'PREFETCHING': '{% trans "Prefetching" as t %}{{ t|escapejs }}',
+            'DOWNLOADING': '{% trans "Downloading" as t %}{{ t|escapejs }}',
+            'PROCESSING': '{% trans "Processing" as t %}{{ t|escapejs }}',
+            'READY': '{% trans "Ready" as t %}{{ t|escapejs }}',
+            'ERROR': '{% trans "Error" as t %}{{ t|escapejs }}'
         };
 
         // Progress percentage mapping
@@ -355,7 +355,7 @@
         if (multiCount > 1) {
             document.getElementById('multi-info').style.display = 'block';
             document.getElementById('multi-count').textContent = multiCount;
-            document.getElementById('subtitle').textContent = 'Processing multiple items...';
+            document.getElementById('subtitle').textContent = '{% trans "Processing multiple items..." as t %}{{ t|escapejs }}';
             if (playlistTitle) {
                 document.getElementById('playlist-title').textContent = playlistTitle;
             }
@@ -367,7 +367,7 @@
             }
             let remainingSeconds = Math.ceil(closeTabAfter);
             closeTimerText.style.display = 'block';
-            closeTimerText.textContent = `Closing this tab in ${remainingSeconds}s...`;
+            closeTimerText.textContent = '{% trans "Closing this tab in %(seconds)ss..." as t %}{{ t|escapejs }}'.replace('%(seconds)s', remainingSeconds);
             closeTimerId = window.setInterval(() => {
                 remainingSeconds -= 1;
                 if (remainingSeconds <= 0) {
@@ -375,7 +375,7 @@
                     window.clearInterval(closeTimerId);
                     return;
                 }
-                closeTimerText.textContent = `Closing this tab in ${remainingSeconds}s...`;
+                closeTimerText.textContent = '{% trans "Closing this tab in %(seconds)ss..." as t %}{{ t|escapejs }}'.replace('%(seconds)s', remainingSeconds);
             }, 1000);
         }
 
@@ -429,7 +429,7 @@
             // Handle success
             if (data.is_ready) {
                 if (multiCount > 1) {
-                    successMessage.textContent = `This item is ready! ${multiCount - 1} more item(s) processing in background.`;
+                    successMessage.textContent = '{% trans "This item is ready! %(count)s more item(s) processing in background." as t %}{{ t|escapejs }}'.replace('%(count)s', multiCount - 1);
                 }
                 successMessage.style.display = 'block';
                 viewBtn.style.display = 'inline-block';
@@ -447,7 +447,7 @@
             console.error('SSE Error:', event);
             eventSource.close();
             
-            statusText.textContent = 'Connection Error';
+            statusText.textContent = '{% trans "Connection Error" as t %}{{ t|escapejs }}';
             statusValue.className = 'status-value error';
             progressFill.style.background = '#dc3545';
             

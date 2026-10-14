@@ -259,12 +259,12 @@
 
     // Status display mapping
     const statusDisplay = {
-        'QUEUED': 'Queued',
-        'PREFETCHING': 'Prefetching',
-        'DOWNLOADING': 'Downloading',
-        'PROCESSING': 'Processing',
-        'READY': 'Ready',
-        'ERROR': 'Error'
+        'QUEUED': '{% trans "Queued" as t %}{{ t|escapejs }}',
+        'PREFETCHING': '{% trans "Prefetching" as t %}{{ t|escapejs }}',
+        'DOWNLOADING': '{% trans "Downloading" as t %}{{ t|escapejs }}',
+        'PROCESSING': '{% trans "Processing" as t %}{{ t|escapejs }}',
+        'READY': '{% trans "Ready" as t %}{{ t|escapejs }}',
+        'ERROR': '{% trans "Error" as t %}{{ t|escapejs }}'
     };
 
     // Progress percentage mapping
@@ -343,7 +343,7 @@
         console.error('SSE Error:', event);
         eventSource.close();
 
-        statusText.textContent = 'Connection Error';
+        statusText.textContent = '{% trans "Connection Error" as t %}{{ t|escapejs }}';
         statusValue.className = 'status-value error';
         progressFill.style.background = '#dc3545';
 

@@ -27,6 +27,8 @@ self.addEventListener('push', (event) => {
       url: data.url || '/',
       approve_url: data.approve_url || null,
       reject_url: data.reject_url || null,
+      // Texts of the confirmation shown after a button press, translated server-side
+      labels: data.labels || {},
     },
   };
   if (data.image) {
@@ -41,19 +43,22 @@ self.addEventListener('push', (event) => {
 
 async function decide(notification, action) {
   const target = action === 'approve' ? notification.data.approve_url : notification.data.reject_url;
+  const labels = notification.data.labels || {};
   let message;
   try {
     const response = await fetch(target, { method: 'POST', credentials: 'omit' });
     const result = await response.json();
     if (!response.ok) {
-      message = result.error || 'Request failed';
+      message = result.error || labels.failed || 'Request failed';
     } else if (!result.changed) {
-      message = 'Already handled';
+      message = labels.already_handled || 'Already handled';
     } else {
-      message = action === 'approve' ? 'Downloading' : 'Rejected';
+      message = action === 'approve'
+        ? labels.downloading || 'Downloading'
+        : labels.rejected || 'Rejected';
     }
   } catch (e) {
-    message = 'Could not reach StashCast';
+    message = labels.unreachable || 'Could not reach StashCast';
   }
   // Short confirmation in place of the answered notification (same tag replaces it)
   await self.registration.showNotification(message, {

@@ -37,7 +37,7 @@ def _resolve_group(request):
     """
     new_group_name = (request.POST.get('new_group') or '').strip()
     if new_group_name:
-        group, _ = MediaGroup.objects.get_or_create(name=new_group_name)
+        group, _created = MediaGroup.objects.get_or_create(name=new_group_name)
         return group
 
     group_id = (request.POST.get('group') or '').strip()
@@ -494,7 +494,7 @@ def admin_stash_form_view(request):
     if request.method == 'POST':
         # Block demo users from submitting
         if is_demo_readonly(request.user):
-            messages.error(request, 'Demo users are not allowed to add URLs.')
+            messages.error(request, _('Demo users are not allowed to add URLs.'))
             return redirect(request.path)
 
         # Check episode limit
@@ -519,7 +519,7 @@ def admin_stash_form_view(request):
             bulk_urls = [u.strip() for u in bulk_urls_raw.split('\n') if u.strip()]
 
             if not bulk_urls:
-                messages.error(request, 'No valid URLs found in bulk input')
+                messages.error(request, _('No valid URLs found in bulk input'))
                 return redirect(request.path)
 
             # Create MediaItems for all valid URLs
@@ -568,15 +568,17 @@ def admin_stash_form_view(request):
                 # Paced queue rather than one big batch task - see queue_items_for_download
                 queue_items_for_download(created_guids)
 
-                msg = f'Queued {len(created_guids)} URLs for download'
+                msg = _('Queued %(count)s URL(s) for download') % {'count': len(created_guids)}
                 if skipped_count > 0:
-                    msg += f' ({skipped_count} invalid URLs skipped)'
+                    msg += ' ' + _('(%(count)s invalid URL(s) skipped)') % {
+                        'count': skipped_count
+                    }
                 messages.success(request, msg)
 
                 # Redirect to progress page for first item
                 return redirect('admin_stash_progress', guid=first_guid)
             else:
-                messages.error(request, 'No valid URLs were processed')
+                messages.error(request, _('No valid URLs were processed'))
                 return redirect(request.path)
 
         # Single URL mode
@@ -626,7 +628,9 @@ def admin_stash_form_view(request):
                     ]
                     return redirect('admin_spotify_confirm')
                 except Exception as e:
-                    messages.error(request, f'Error fetching Spotify metadata: {str(e)}')
+                    messages.error(
+                        request, _('Error fetching Spotify metadata: %(error)s') % {'error': e}
+                    )
                     return redirect(request.path)
 
             if strategy == 'ytdlp':
@@ -677,12 +681,14 @@ def admin_stash_form_view(request):
                 item.error_message = ''
                 item.save()
                 _assign_group(item, group)
-                messages.info(request, f'Re-fetching existing item: {item.guid}')
+                messages.info(
+                    request, _('Re-fetching existing item: %(guid)s') % {'guid': item.guid}
+                )
             else:
                 item = MediaItem.objects.create(
                     source_url=url, requested_type=media_type, slug='pending', group=group
                 )
-                messages.success(request, f'Created new item: {item.guid}')
+                messages.success(request, _('Created new item: %(guid)s') % {'guid': item.guid})
 
             # Enqueue processing
             process_media(item.guid)
@@ -690,7 +696,7 @@ def admin_stash_form_view(request):
             # Redirect to admin progress page
             return redirect('admin_stash_progress', guid=item.guid)
         else:
-            messages.error(request, 'Please provide a URL')
+            messages.error(request, _('Please provide a URL'))
 
     # Get recent items
     recent_items = MediaItem.objects.all().order_by('-created_at')[:10]
@@ -723,13 +729,13 @@ def admin_stash_confirm_multiple_view(request):
     playlist_title = request.session.get('multi_item_playlist_title', 'Multiple Items')
 
     if not url or not entries:
-        messages.error(request, 'No multi-item data found. Please try again.')
+        messages.error(request, _('No multi-item data found. Please try again.'))
         return redirect('admin_stash_form')
 
     if request.method == 'POST':
         # Block demo users from submitting
         if is_demo_readonly(request.user):
-            messages.error(request, 'Demo users are not allowed to add URLs.')
+            messages.error(request, _('Demo users are not allowed to add URLs.'))
             return redirect('admin_stash_form')
 
         # Resolve group chosen on the original form (stored in session)
@@ -783,7 +789,9 @@ def admin_stash_confirm_multiple_view(request):
         if created_guids:
             queue_items_for_download(created_guids)
 
-        messages.success(request, f'Queued {len(created_guids)} items for download')
+        messages.success(
+            request, _('Queued %(count)s item(s) for download') % {'count': len(created_guids)}
+        )
         return redirect('admin_stash_form')
 
     context = {
@@ -829,13 +837,13 @@ def admin_spotify_confirm_view(request):
         results_by_platform[platform].append(result)
 
     if not spotify_url:
-        messages.error(request, 'No Spotify URL found. Please try again.')
+        messages.error(request, _('No Spotify URL found. Please try again.'))
         return redirect('admin_stash_form')
 
     if request.method == 'POST':
         # Block demo users from submitting
         if is_demo_readonly(request.user):
-            messages.error(request, 'Demo users are not allowed to add URLs.')
+            messages.error(request, _('Demo users are not allowed to add URLs.'))
             return redirect('admin_stash_form')
 
         # Get selected YouTube URL
@@ -847,7 +855,7 @@ def admin_spotify_confirm_view(request):
             youtube_url = custom_url
 
         if not youtube_url:
-            messages.error(request, 'Please select a YouTube result or enter a custom URL.')
+            messages.error(request, _('Please select a YouTube result or enter a custom URL.'))
             return redirect('admin_spotify_confirm')
 
         # Resolve group chosen on the original form (stored in session)
@@ -889,7 +897,7 @@ def admin_spotify_confirm_view(request):
             item.error_message = ''
             item.save()
             _assign_group(item, group)
-            messages.info(request, f'Re-fetching existing item: {item.guid}')
+            messages.info(request, _('Re-fetching existing item: %(guid)s') % {'guid': item.guid})
         else:
             item = MediaItem.objects.create(
                 source_url=youtube_url,
@@ -899,7 +907,8 @@ def admin_spotify_confirm_view(request):
             )
             messages.success(
                 request,
-                f'Downloading from YouTube (original: Spotify): {spotify_title or "Unknown"}',
+                _('Downloading from YouTube (original: Spotify): %(title)s')
+                % {'title': spotify_title or _('Unknown')},
             )
 
         # Store the original Spotify URL in the description for reference
@@ -1190,11 +1199,11 @@ def stash_status_stream(request, guid):
                     and not worker_is_alive()
                 ):
                     item.status = MediaItem.STATUS_ERROR
-                    item.error_message = (
+                    item.error_message = _(
                         'Worker unavailable: no heartbeat from the Huey worker and the '
-                        f'task has been waiting {int(seconds_waiting)} seconds. '
+                        'task has been waiting %(seconds)s seconds. '
                         'Start it with: python manage.py run_huey'
-                    )
+                    ) % {'seconds': int(seconds_waiting)}
                     item.save()
 
                 # Only send event if status changed
@@ -1254,9 +1263,9 @@ def item_archive_view(request, guid):
         item.status = MediaItem.STATUS_ARCHIVED
         item.archived_at = timezone.now()
         item.save()
-        messages.success(request, f'Archived: {item.title or item.guid}')
+        messages.success(request, _('Archived: %(title)s') % {'title': item.title or item.guid})
     else:
-        messages.error(request, 'Only ready items can be archived.')
+        messages.error(request, _('Only ready items can be archived.'))
 
     return redirect('item_detail', guid=guid)
 
@@ -1279,7 +1288,7 @@ def item_refetch_view(request, guid):
     item.error_message = ''
     item.save()
     process_media(item.guid)
-    messages.success(request, f'Re-fetching: {item.title or item.guid}')
+    messages.success(request, _('Re-fetching: %(title)s') % {'title': item.title or item.guid})
 
     return redirect('item_detail', guid=guid)
 
@@ -1300,9 +1309,11 @@ def item_regenerate_summary_view(request, guid):
 
     if item.subtitle_path:
         generate_summary(item.guid)
-        messages.success(request, f'Regenerating summary for: {item.title or item.guid}')
+        messages.success(
+            request, _('Regenerating summary for: %(title)s') % {'title': item.title or item.guid}
+        )
     else:
-        messages.error(request, 'No subtitles available for summary generation.')
+        messages.error(request, _('No subtitles available for summary generation.'))
 
     return redirect('item_detail', guid=guid)
 
@@ -1325,9 +1336,9 @@ def item_unarchive_view(request, guid):
         item.status = MediaItem.STATUS_READY
         item.archived_at = None
         item.save()
-        messages.success(request, f'Unarchived: {item.title or item.guid}')
+        messages.success(request, _('Unarchived: %(title)s') % {'title': item.title or item.guid})
     else:
-        messages.error(request, 'Only archived items can be unarchived.')
+        messages.error(request, _('Only archived items can be unarchived.'))
 
     return redirect('item_detail', guid=guid)
 
@@ -1354,11 +1365,11 @@ def item_decision_view(request, guid, action):
     item = get_object_or_404(MediaItem, guid=guid)
     label = item.title or item.guid
     if not _decide_item(item, action):
-        messages.error(request, 'This item is no longer awaiting approval.')
+        messages.error(request, _('This item is no longer awaiting approval.'))
     elif action == 'approve':
-        messages.success(request, f'Downloading: {label}')
+        messages.success(request, _('Downloading: %(title)s') % {'title': label})
     else:
-        messages.success(request, f'Rejected: {label}')
+        messages.success(request, _('Rejected: %(title)s') % {'title': label})
 
     return redirect('item_detail', guid=guid)
 
@@ -1407,16 +1418,18 @@ def notifications_view(request):
         sent = send_to_staff(
             {
                 'title': 'StashCast',
-                'body': 'Test notification - push works on this device.',
+                'body': str(_('Test notification - push works on this device.')),
                 'icon': static('media/icons/icon-192.png'),
                 'url': request.path,
             },
             users=[request.user],
         )
         if sent:
-            messages.success(request, f'Test notification sent to {sent} device(s).')
+            messages.success(
+                request, _('Test notification sent to %(count)s device(s).') % {'count': sent}
+            )
         else:
-            messages.error(request, 'No device received the notification.')
+            messages.error(request, _('No device received the notification.'))
         return redirect('notifications')
 
     context = {

@@ -17,6 +17,7 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.templatetags.static import static
 from django.urls import reverse
+from django.utils.translation import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ def _item_body(item):
         parts.append(item.group.name)
     if item.duration_seconds:
         minutes = round(item.duration_seconds / 60)
-        parts.append(f'{minutes} min')
+        parts.append(_('%(minutes)s min') % {'minutes': minutes})
     header = ' · '.join(parts)
 
     description = ' '.join((item.description or '').split())
@@ -138,17 +139,26 @@ def notify_approval_request(item):
     if not push_enabled():
         return 0
 
-    payload = _base_payload(item, f'New: {item.title or item.source_url}')
+    payload = _base_payload(item, _('New: %(title)s') % {'title': item.title or item.source_url})
     payload.update(
         {
             'approve_url': _push_decision_url(item, 'approve'),
             'reject_url': _push_decision_url(item, 'reject'),
             'actions': [
-                {'action': 'approve', 'title': 'Download'},
-                {'action': 'reject', 'title': 'Reject'},
+                {'action': 'approve', 'title': _('Download')},
+                {'action': 'reject', 'title': _('Reject')},
             ],
             # Keep it on screen until answered
             'requireInteraction': True,
+            # The service worker is plain JS and cannot translate; it shows these after a
+            # button press
+            'labels': {
+                'downloading': _('Downloading'),
+                'rejected': _('Rejected'),
+                'already_handled': _('Already handled'),
+                'failed': _('Request failed'),
+                'unreachable': _('Could not reach StashCast'),
+            },
         }
     )
     return send_to_staff(payload, users=_group_users(item))
@@ -165,7 +175,7 @@ def notify_download_ready_if_enabled(item):
         return 0
     try:
         return send_to_staff(
-            _base_payload(item, f'Ready: {item.title or item.source_url}'),
+            _base_payload(item, _('Ready: %(title)s') % {'title': item.title or item.source_url}),
             users=_group_users(item),
         )
     except Exception as e:

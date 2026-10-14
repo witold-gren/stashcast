@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 17:25+0000\n"
+"POT-Creation-Date: 2026-10-14 21:15+0000\n"
 "PO-Revision-Date: 2026-01-12 22:00+0000\n"
 "Last-Translator: StashCast Team\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,7 +18,613 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: media/models.py:52 media/models.py:190 media/models.py:201
+#: media/admin.py:104
+#, python-format
+msgid "Sync YouTube channel - newest %(count)s videos"
+msgstr "Sincronizar canal do YouTube – os %(count)s vídeos mais recentes"
+
+#: media/admin.py:120
+msgid "Pick at least one user to notify, or untick \"notify on download\"."
+msgstr ""
+"Escolha pelo menos um usuário para notificar ou desmarque “Notificar ao "
+"baixar”."
+
+#: media/admin.py:166
+msgid "Approval & notifications"
+msgstr "Aprovação e notificações"
+
+#: media/admin.py:170 media/admin.py:203
+msgid "Auto-delete"
+msgstr "Exclusão automática"
+
+#: media/admin.py:190
+#, python-format
+msgid ""
+"\"%(group)s\" asks before downloading but notifies nobody. New uploads will "
+"wait under \"Awaiting Approval\" in the admin."
+msgstr ""
+"“%(group)s” pergunta antes de baixar, mas não notifica ninguém. Os novos "
+"vídeos aguardarão em “Aguardando aprovação” no painel."
+
+#: media/admin.py:201
+#, python-format
+msgid "%(count)s day"
+msgid_plural "%(count)s days"
+msgstr[0] "%(count)s dia"
+msgstr[1] "%(count)s dias"
+
+#: media/admin.py:214
+msgid "None of the selected groups has auto-delete switched on."
+msgstr "Nenhum dos grupos selecionados tem a exclusão automática ativada."
+
+#: media/admin.py:222
+#, python-format
+msgid "Deleted %(count)s item past its group's retention period."
+msgid_plural "Deleted %(count)s items past their group's retention period."
+msgstr[0] "%(count)s item excluído por passar do período de retenção do grupo."
+msgstr[1] ""
+"%(count)s itens excluídos por passarem do período de retenção do grupo."
+
+#: media/admin.py:229
+msgid "Auto-delete expired items now"
+msgstr "Excluir agora os itens expirados"
+
+#: media/admin.py:234 media/templates/admin/admin_stash_confirm_multiple.html:5
+msgid "Items"
+msgstr "Itens"
+
+#: media/admin.py:243
+msgid "never synced"
+msgstr "nunca sincronizado"
+
+#: media/admin.py:246
+msgid "YouTube sync"
+msgstr "Sincronização do YouTube"
+
+#: media/admin.py:266 media/admin.py:315
+msgid "None of the selected groups has a YouTube channel configured."
+msgstr "Nenhum dos grupos selecionados tem um canal do YouTube configurado."
+
+#: media/admin.py:280
+#, python-format
+msgid ""
+"Checked the newest %(depth)s upload(s) of %(channels)s channel(s): queued "
+"%(queued)s new item(s). They are released a few at a time by the paced "
+"download queue."
+msgstr ""
+"Foram verificados os %(depth)s vídeos mais recentes de %(channels)s "
+"canal(is): %(queued)s item(ns) novo(s) na fila. A fila de downloads os "
+"libera aos poucos."
+
+#: media/admin.py:286
+#, python-format
+msgid "%(count)s new item is awaiting your approval."
+msgid_plural "%(count)s new items are awaiting your approval."
+msgstr[0] "%(count)s item novo aguarda sua aprovação."
+msgstr[1] "%(count)s itens novos aguardam sua aprovação."
+
+#: media/admin.py:296
+#, python-format
+msgid "Sync YouTube channel now (newest %(count)s only)"
+msgstr "Sincronizar canal do YouTube agora (apenas os %(count)s mais recentes)"
+
+#: media/admin.py:324
+#, python-format
+msgid ""
+"Scanning %(channels)s channel(s) in the background. Every upload found is "
+"added to the paced queue and downloaded %(batch)s at a time every "
+"%(interval)s min - watch it with \"./manage.py download_queue\"."
+msgstr ""
+"Verificando %(channels)s canal(is) em segundo plano. Cada vídeo encontrado "
+"entra na fila e é baixado de %(batch)s em %(batch)s a cada %(interval)s min "
+"– acompanhe com “./manage.py download_queue”."
+
+#: media/admin.py:332
+msgid "Download ENTIRE channel (paced, background)"
+msgstr "Baixar o canal INTEIRO (aos poucos, em segundo plano)"
+
+#: media/admin.py:347 media/admin.py:684
+msgid ""
+"Speech to text is switched off. Set STASHCAST_WHISPER_ENABLED=true and point "
+"STASHCAST_WHISPER_URI at your Wyoming server."
+msgstr ""
+"A transcrição de voz está desativada. Defina STASHCAST_WHISPER_ENABLED=true "
+"e aponte STASHCAST_WHISPER_URI para o seu servidor Wyoming."
+
+#: media/admin.py:361
+msgid "The selected groups hold no downloaded items."
+msgstr "Os grupos selecionados não têm itens baixados."
+
+#: media/admin.py:364 media/admin.py:699
+msgid "auto-detect"
+msgstr "detecção automática"
+
+#: media/admin.py:368
+#, python-format
+msgid ""
+"Transcribing %(count)s item(s) from %(groups)s group(s), language: "
+"%(language)s. Watch the Transcript column on the item list."
+msgstr ""
+"Transcrevendo %(count)s item(ns) de %(groups)s grupo(s), idioma: "
+"%(language)s. Acompanhe na coluna “Transcrição” da lista de itens."
+
+#: media/admin.py:375
+msgid "Create transcript for all items in group"
+msgstr "Criar transcrição de todos os itens do grupo"
+
+#: media/admin.py:388 media/models.py:28
+msgid "Image"
+msgstr "Imagem"
+
+#: media/admin.py:397
+msgid "No image uploaded"
+msgstr "Nenhuma imagem enviada"
+
+#: media/admin.py:399
+msgid "Image preview"
+msgstr "Pré-visualização da imagem"
+
+#: media/admin.py:417 media/admin.py:648
+#: media/templates/admin/admin_stash_confirm_multiple.html:199
+msgid "Duration"
+msgstr "Duração"
+
+#: media/admin.py:425
+#, python-format
+msgid "Incomplete (off by more than %(seconds)ss)"
+msgstr "Incompleto (diferença de mais de %(seconds)s s)"
+
+#: media/admin.py:427
+msgid "Complete"
+msgstr "Completo"
+
+#: media/admin.py:428
+msgid "Not checked yet"
+msgstr "Ainda não verificado"
+
+#: media/admin.py:505
+msgid "Identification"
+msgstr "Identificação"
+
+#: media/admin.py:506 media/models.py:249
+#: media/templates/admin/admin_stash_form.html:347
+#: media/templates/admin/admin_stash_progress.html:209
+#: media/templates/admin/preferences.html:152
+#: media/templates/media/stash_progress.html:278
+msgid "Status"
+msgstr "Status"
+
+#: media/admin.py:508
+msgid "Media Info"
+msgstr "Informações da mídia"
+
+#: media/admin.py:522
+msgid "Files"
+msgstr "Arquivos"
+
+#: media/admin.py:534 media/models.py:198
+#: media/templates/admin/admin_stash_progress.html:197
+#: media/templates/admin/admin_stash_progress.html:265
+#: media/templates/admin/item_detail.html:207
+#: media/templates/media/stash_progress.html:333
+msgid "Processing"
+msgstr "Processando"
+
+#: media/admin.py:536
+msgid "Metadata"
+msgstr "Metadados"
+
+#: media/admin.py:545 media/models.py:369
+#: media/templates/admin/item_detail.html:335
+msgid "Summary"
+msgstr "Resumo"
+
+#: media/admin.py:547 media/admin.py:844 media/models.py:310
+msgid "Transcript"
+msgstr "Transcrição"
+
+#: media/admin.py:557
+msgid "Logs & Preview"
+msgstr "Logs e pré-visualização"
+
+#: media/admin.py:559
+msgid "Timestamps"
+msgstr "Datas e horários"
+
+#: media/admin.py:597
+msgid "Waiting out the retry backoff; not released until then."
+msgstr "Aguardando a próxima tentativa; não será liberado até lá."
+
+#: media/admin.py:599
+#, python-format
+msgid "try %(attempt)s"
+msgstr "tentativa %(attempt)s"
+
+#: media/admin.py:608
+msgid "Release order: oldest queued item first."
+msgstr "Ordem de liberação: primeiro o item mais antigo da fila."
+
+#: media/admin.py:611
+msgid "Queue"
+msgstr "Fila"
+
+#: media/admin.py:625
+msgid ""
+"Not measured yet - run ./manage.py check_durations or the \"Check file "
+"duration\" action."
+msgstr ""
+"Ainda não medido – execute ./manage.py check_durations ou a ação “Verificar "
+"duração do arquivo”."
+
+#: media/admin.py:635
+#, python-format
+msgid "Source says %(expected)ss, file plays %(actual)ss."
+msgstr "A fonte indica %(expected)s s e o arquivo dura %(actual)s s."
+
+#: media/admin.py:636
+msgid "ok"
+msgstr "ok"
+
+#: media/admin.py:641
+#, python-format
+msgid ""
+"Source says %(expected)ss but the file plays only %(actual)ss - the download "
+"is incomplete, fetch it again."
+msgstr ""
+"A fonte indica %(expected)s s, mas o arquivo dura só %(actual)s s – o "
+"download está incompleto, baixe novamente."
+
+#: media/admin.py:645
+#, python-format
+msgid "short %(gap)ss"
+msgstr "faltam %(gap)s s"
+
+#: media/admin.py:663 media/admin.py:697
+msgid "No downloaded items selected."
+msgstr "Nenhum item baixado selecionado."
+
+#: media/admin.py:668
+#, python-format
+msgid ""
+"Measuring %(count)s file(s) in the background. Reload in a moment, then use "
+"the \"Duration\" filter to list the incomplete ones."
+msgstr ""
+"Medindo %(count)s arquivo(s) em segundo plano. Recarregue em instantes e use "
+"o filtro “Duração” para listar os incompletos."
+
+#: media/admin.py:674
+msgid "Check file duration against source"
+msgstr "Verificar duração do arquivo em relação à fonte"
+
+#: media/admin.py:703
+#, python-format
+msgid ""
+"Transcribing %(count)s item(s) in the background against %(server)s, "
+"language: %(language)s. Long recordings take a while - the Transcript column "
+"fills in as they finish."
+msgstr ""
+"Transcrevendo %(count)s item(ns) em segundo plano em %(server)s, idioma: "
+"%(language)s. Gravações longas demoram – a coluna “Transcrição” é preenchida "
+"conforme terminam."
+
+#: media/admin.py:714
+msgid "Create transcript"
+msgstr "Criar transcrição"
+
+#: media/admin.py:726
+msgid "None of the selected items was waiting to be transcribed."
+msgstr "Nenhum dos itens selecionados aguardava transcrição."
+
+#: media/admin.py:730
+#, python-format
+msgid "Removed %(count)s item(s) from the transcription queue."
+msgstr "%(count)s item(ns) removido(s) da fila de transcrição."
+
+#: media/admin.py:735
+#, python-format
+msgid ""
+"%(count)s item(s) are being transcribed right now and were left to finish - "
+"work already under way cannot be interrupted."
+msgstr ""
+"%(count)s item(ns) está(ão) sendo transcrito(s) agora e foi(ram) deixado(s) "
+"terminar – o trabalho em andamento não pode ser interrompido."
+
+#: media/admin.py:741
+msgid "Remove from transcription queue"
+msgstr "Remover da fila de transcrição"
+
+#: media/admin.py:753
+msgid "None of the selected items was waiting to download."
+msgstr "Nenhum dos itens selecionados aguardava download."
+
+#: media/admin.py:759
+#, python-format
+msgid ""
+"Removed %(count)s item(s) from the download queue. They are kept as errors "
+"saying why - use \"Requeue selected items\" to put them back."
+msgstr ""
+"%(count)s item(ns) removido(s) da fila de downloads. Ficam como erros "
+"explicando o motivo – use “Recolocar na fila” para devolvê-los."
+
+#: media/admin.py:765
+msgid "Remove from download queue"
+msgstr "Remover da fila de downloads"
+
+#: media/admin.py:778 media/admin.py:802
+msgid "None of the selected items was awaiting approval."
+msgstr "Nenhum dos itens selecionados aguardava aprovação."
+
+#: media/admin.py:783
+#, python-format
+msgid "Downloading %(count)s approved item."
+msgid_plural "Downloading %(count)s approved items."
+msgstr[0] "Baixando %(count)s item aprovado."
+msgstr[1] "Baixando %(count)s itens aprovados."
+
+#: media/admin.py:790
+msgid "Approve: download selected items"
+msgstr "Aprovar: baixar os itens selecionados"
+
+#: media/admin.py:807
+#, python-format
+msgid ""
+"Rejected %(count)s item(s). They are kept without files so the channel sync "
+"does not offer them again."
+msgstr ""
+"%(count)s item(ns) rejeitado(s). Ficam sem arquivos para que a sincronização "
+"do canal não os ofereça novamente."
+
+#: media/admin.py:813
+msgid "Reject selected items"
+msgstr "Rejeitar os itens selecionados"
+
+#: media/admin.py:819
+msgid "Waiting for the worker"
+msgstr "Aguardando o worker"
+
+#: media/admin.py:819
+msgid "waiting"
+msgstr "aguardando"
+
+#: media/admin.py:824
+msgid "Being transcribed right now"
+msgstr "Sendo transcrito agora"
+
+#: media/admin.py:825
+msgid "transcribing"
+msgstr "transcrevendo"
+
+#: media/admin.py:830
+msgid "Unknown error"
+msgstr "Erro desconhecido"
+
+#: media/admin.py:831
+msgid "failed"
+msgstr "falhou"
+
+#: media/admin.py:838
+#, python-format
+msgid "%(count)s character"
+msgid_plural "%(count)s characters"
+msgstr[0] "%(count)s caractere"
+msgstr[1] "%(count)s caracteres"
+
+#: media/admin.py:840
+#, python-format
+msgid "%(count)s word"
+msgid_plural "%(count)s words"
+msgstr[0] "%(count)s palavra"
+msgstr[1] "%(count)s palavras"
+
+#: media/admin.py:852
+msgid "No transcript yet"
+msgstr "Ainda sem transcrição"
+
+#: media/admin.py:859
+msgid "Transcript text"
+msgstr "Texto da transcrição"
+
+#: media/admin.py:872
+msgid ""
+"No publication date - feeds fall back to the download date. Use the \"Fetch "
+"publication date from source\" action."
+msgstr ""
+"Sem data de publicação – os feeds usam a data do download. Use a ação "
+"“Buscar data de publicação na fonte”."
+
+#: media/admin.py:875
+msgid "not set"
+msgstr "não definido"
+
+#: media/admin.py:884
+msgid "Published"
+msgstr "Publicado"
+
+#: media/admin.py:893
+msgid "File Size"
+msgstr "Tamanho do arquivo"
+
+#: media/admin.py:898 media/templates/admin/admin_stash_form.html:364
+msgid "View"
+msgstr "Ver"
+
+#: media/admin.py:899 media/templates/admin/item_detail.html:240
+msgid "Edit"
+msgstr "Editar"
+
+#: media/admin.py:904 media/admin.py:944
+msgid "Logs"
+msgstr "Logs"
+
+#: media/admin.py:907 media/templates/admin/admin_stash_form.html:349
+msgid "Actions"
+msgstr "Ações"
+
+#: media/admin.py:927 media/admin.py:931
+msgid "No log file"
+msgstr "Sem arquivo de log"
+
+#: media/admin.py:942
+#, python-format
+msgid "Error reading log: %(error)s"
+msgstr "Erro ao ler o log: %(error)s"
+
+#: media/admin.py:958
+#, python-format
+msgid "Re-fetching %(count)s item."
+msgid_plural "Re-fetching %(count)s items."
+msgstr[0] "Baixando novamente %(count)s item."
+msgstr[1] "Baixando novamente %(count)s itens."
+
+#: media/admin.py:962
+msgid "Re-fetch selected items (immediately)"
+msgstr "Baixar novamente os itens selecionados (imediatamente)"
+
+#: media/admin.py:990
+#, python-format
+msgid "Requeued %(count)s item(s) for the paced download queue."
+msgstr "%(count)s item(ns) recolocado(s) na fila de downloads."
+
+#: media/admin.py:992
+#, python-format
+msgid "Skipped %(count)s item(s) that are downloading right now."
+msgstr "%(count)s item(ns) ignorado(s) por estar sendo baixado(s) agora."
+
+#: media/admin.py:997
+msgid "Requeue selected items (paced queue)"
+msgstr "Recolocar os itens selecionados na fila (gradual)"
+
+#: media/admin.py:1017
+#, python-format
+msgid ""
+"Fetching publication dates for %(count)s item(s) in the background. Reload "
+"in a moment to see them."
+msgstr ""
+"Buscando datas de publicação de %(count)s item(ns) em segundo plano. "
+"Recarregue em instantes para vê-las."
+
+#: media/admin.py:1023
+msgid "Fetch publication date from source"
+msgstr "Buscar data de publicação na fonte"
+
+#: media/admin.py:1041
+msgid "No video items selected."
+msgstr "Nenhum vídeo selecionado."
+
+#: media/admin.py:1046
+#, python-format
+msgid ""
+"Checking %(count)s video(s) in the background; anything that cannot play on "
+"Apple Podcasts is repacked as MP4/H.264/AAC."
+msgstr ""
+"Verificando %(count)s vídeo(s) em segundo plano; o que não tocar no Apple "
+"Podcasts é reempacotado como MP4/H.264/AAC."
+
+#: media/admin.py:1052
+msgid "Repair video for Apple Podcasts / iOS"
+msgstr "Reparar vídeo para Apple Podcasts / iOS"
+
+#: media/admin.py:1065
+#, python-format
+msgid "Enqueued summary generation for %(count)s item."
+msgid_plural "Enqueued summary generation for %(count)s items."
+msgstr[0] "Geração de resumo enfileirada para %(count)s item."
+msgstr[1] "Geração de resumos enfileirada para %(count)s itens."
+
+#: media/admin.py:1072
+msgid "Regenerate summaries"
+msgstr "Gerar resumos novamente"
+
+#: media/admin.py:1082
+#, python-format
+msgid "Archived %(count)s item."
+msgid_plural "Archived %(count)s items."
+msgstr[0] "%(count)s item arquivado."
+msgstr[1] "%(count)s itens arquivados."
+
+#: media/admin.py:1086
+msgid "Archive selected items"
+msgstr "Arquivar os itens selecionados"
+
+#: media/admin.py:1096
+#, python-format
+msgid "Unarchived %(count)s item."
+msgid_plural "Unarchived %(count)s items."
+msgstr[0] "%(count)s item desarquivado."
+msgstr[1] "%(count)s itens desarquivados."
+
+#: media/admin.py:1100
+msgid "Unarchive selected items"
+msgstr "Desarquivar os itens selecionados"
+
+#: media/feeds.py:322
+msgid "StashCast Audio"
+msgstr "StashCast Áudio"
+
+#: media/feeds.py:324
+msgid "Downloaded audio content"
+msgstr "Conteúdo de áudio baixado"
+
+#: media/feeds.py:339
+msgid "StashCast Video"
+msgstr "StashCast Vídeo"
+
+#: media/feeds.py:341
+msgid "Downloaded video content"
+msgstr "Conteúdo de vídeo baixado"
+
+#: media/feeds.py:358
+msgid "Downloaded audio and video content"
+msgstr "Conteúdo de áudio e vídeo baixado"
+
+#: media/feeds.py:368
+msgid "StashCast Archive"
+msgstr "StashCast Arquivo"
+
+#: media/feeds.py:370
+msgid "Archived audio and video content"
+msgstr "Conteúdo de áudio e vídeo arquivado"
+
+#: media/feeds.py:399
+#, python-format
+msgid "Downloaded media in the \"%(group)s\" group"
+msgstr "Mídias baixadas do grupo “%(group)s”"
+
+#: media/models.py:23
+msgid "Name"
+msgstr "Nome"
+
+#: media/models.py:25 media/models.py:241
+msgid "Slug"
+msgstr "Slug"
+
+#: media/models.py:32
+msgid "Optional cover image shown as <image> in this group's RSS feed."
+msgstr "Imagem de capa opcional exibida como <image> no feed RSS deste grupo."
+
+#: media/models.py:35
+msgid "YouTube channel URL"
+msgstr "URL do canal do YouTube"
+
+#: media/models.py:39
+msgid ""
+"Optional YouTube channel URL (e.g. https://www.youtube.com/@name). New "
+"uploads are periodically downloaded as audio into this group."
+msgstr ""
+"URL opcional de um canal do YouTube (ex.: https://www.youtube.com/@nome). Os "
+"vídeos novos são baixados periodicamente para este grupo."
+
+#: media/models.py:44
+msgid "Last YouTube sync"
+msgstr "Última sincronização do YouTube"
+
+#: media/models.py:47
+msgid "When this group was last checked for new YouTube uploads."
+msgstr ""
+"Quando este grupo foi verificado pela última vez em busca de vídeos novos no "
+"YouTube."
+
+#: media/models.py:57 media/models.py:215 media/models.py:226
 #: media/templates/admin/bookmarklet.html:200
 #: media/templates/admin/grid_view.html:209
 #: media/templates/admin/grid_view.html:252
@@ -28,7 +634,7 @@ msgstr ""
 msgid "Audio"
 msgstr "Áudio"
 
-#: media/models.py:53 media/models.py:191 media/models.py:202
+#: media/models.py:58 media/models.py:216 media/models.py:227
 #: media/templates/admin/admin_stash_form.html:288
 #: media/templates/admin/bookmarklet.html:201
 #: media/templates/admin/grid_view.html:210
@@ -39,63 +645,473 @@ msgstr "Áudio"
 msgid "Video"
 msgstr "Vídeo"
 
-#: media/models.py:170 media/templates/admin/item_detail.html:211
+#: media/models.py:62
+msgid "Transcript in description"
+msgstr "Transcrição na descrição"
+
+#: media/models.py:65
+msgid ""
+"Also publish the transcript inside each episode description, as plain text "
+"without cue timings. For apps that ignore the transcript file - Apple "
+"Podcasts among them. Worth it for short episodes; a 60 minute one turns the "
+"description into a wall of text."
+msgstr ""
+"Publica também a transcrição na descrição de cada episódio, como texto "
+"simples sem marcações de tempo. Para apps que ignoram o arquivo de "
+"transcrição, como o Apple Podcasts. Vale a pena em episódios curtos; em um "
+"de 60 minutos a descrição vira um paredão de texto."
+
+#: media/models.py:73
+msgid "Transcribe new downloads"
+msgstr "Transcrever novos downloads"
+
+#: media/models.py:76
+msgid ""
+"Transcribe every new download in this group automatically. Requires "
+"STASHCAST_WHISPER_ENABLED; existing items are untouched - use the \"Create "
+"transcript\" action for those."
+msgstr ""
+"Transcreve automaticamente cada novo download deste grupo. Requer "
+"STASHCAST_WHISPER_ENABLED; os itens existentes não são alterados – use a "
+"ação “Criar transcrição” para eles."
+
+#: media/models.py:83
+msgid "Download type"
+msgstr "Tipo de download"
+
+#: media/models.py:88
+msgid ""
+"What to download for this group. Applies to the YouTube channel sync and to "
+"anything added to this group without an explicit type of its own."
+msgstr ""
+"O que baixar para este grupo. Vale para a sincronização do canal do YouTube "
+"e para tudo o que for adicionado ao grupo sem um tipo próprio."
+
+#: media/models.py:94
+msgid "Require approval"
+msgstr "Exigir aprovação"
+
+#: media/models.py:97
+msgid ""
+"Ask before downloading new YouTube uploads. The sync only fetches the title, "
+"description and thumbnail and sends a push notification with Download / "
+"Reject buttons; nothing reaches the feed until you approve it."
+msgstr ""
+"Pergunta antes de baixar vídeos novos do YouTube. A sincronização busca só "
+"título, descrição e miniatura e envia uma notificação com os botões Baixar / "
+"Rejeitar; nada chega ao feed até você aprovar."
+
+#: media/models.py:103
+msgid "Notify on download"
+msgstr "Notificar ao baixar"
+
+#: media/models.py:106
+msgid ""
+"Send a push notification when a new item in this group is ready. Ignored "
+"while \"require approval\" is on - you already hear about every upload then."
+msgstr ""
+"Envia uma notificação push quando um item novo do grupo fica pronto. "
+"Ignorado com “Exigir aprovação” ativado – nesse caso você já é avisado de "
+"cada vídeo."
+
+#: media/models.py:112
+msgid "Notify users"
+msgstr "Usuários notificados"
+
+#: media/models.py:117
+msgid ""
+"Who receives this group's push notifications - approval requests and "
+"\"ready\" notices. Nobody is notified while the list is empty."
+msgstr ""
+"Quem recebe as notificações push deste grupo – pedidos de aprovação e avisos "
+"de “pronto”. Ninguém é notificado enquanto a lista estiver vazia."
+
+#: media/models.py:123
+msgid "Auto-delete enabled"
+msgstr "Exclusão automática ativada"
+
+#: media/models.py:126
+msgid ""
+"Delete items (files and database record) once they are older than the number "
+"of days below, counted from when they were downloaded."
+msgstr ""
+"Exclui os itens (arquivos e registro no banco) quando ficam mais antigos que "
+"o número de dias abaixo, contado a partir do download."
+
+#: media/models.py:131
+msgid "Auto-delete after days"
+msgstr "Excluir após (dias)"
+
+#: media/models.py:134
+msgid "How many days a downloaded item is kept when auto-delete is on."
+msgstr ""
+"Por quantos dias um item baixado é mantido com a exclusão automática ativada."
+
+#: media/models.py:136 media/models.py:388
+#: media/templates/admin/admin_stash_form.html:348
+msgid "Created"
+msgstr "Criado"
+
+#: media/models.py:140
+msgid "media group"
+msgstr "grupo de mídia"
+
+#: media/models.py:141
+msgid "media groups"
+msgstr "grupos de mídia"
+
+#: media/models.py:195 media/templates/admin/admin_stash_progress.html:262
+#: media/templates/admin/item_detail.html:211
+#: media/templates/media/stash_progress.html:330
 msgid "Queued"
 msgstr "Na fila"
 
-#: media/models.py:171 media/templates/admin/item_detail.html:217
+#: media/models.py:196 media/templates/admin/admin_stash_progress.html:263
+#: media/templates/admin/item_detail.html:217
+#: media/templates/media/stash_progress.html:331
 msgid "Prefetching"
 msgstr "Preparando"
 
-#: media/models.py:172 media/templates/admin/item_detail.html:209
+#: media/models.py:197 media/notifications.py:156
+#: media/templates/admin/admin_stash_progress.html:264
+#: media/templates/admin/item_detail.html:209
+#: media/templates/media/stash_progress.html:332
 msgid "Downloading"
 msgstr "Baixando"
 
-#: media/models.py:173 media/templates/admin/admin_stash_progress.html:197
-#: media/templates/admin/item_detail.html:207
-msgid "Processing"
-msgstr "Processando"
-
-#: media/models.py:174 media/templates/admin/item_detail.html:201
+#: media/models.py:199 media/templates/admin/admin_stash_progress.html:266
+#: media/templates/admin/item_detail.html:201
+#: media/templates/media/stash_progress.html:334
 msgid "Ready"
 msgstr "Pronto"
 
-#: media/models.py:175 media/templates/admin/item_detail.html:205
+#: media/models.py:200 media/templates/admin/admin_stash_progress.html:267
+#: media/templates/admin/item_detail.html:205
+#: media/templates/media/stash_progress.html:335
 msgid "Error"
 msgstr "Erro"
 
-#: media/models.py:176 media/templates/admin/item_detail.html:203
+#: media/models.py:201 media/models.py:387
+#: media/templates/admin/item_detail.html:203
 #: media/templates/admin/preferences.html:169
 msgid "Archived"
 msgstr "Arquivado"
 
-#: media/models.py:177 media/templates/admin/item_detail.html:213
+#: media/models.py:202 media/templates/admin/item_detail.html:213
 msgid "Awaiting approval"
 msgstr "Aguardando aprovação"
 
-#: media/models.py:178 media/templates/admin/item_detail.html:215
+#: media/models.py:203 media/notifications.py:157
+#: media/templates/admin/item_detail.html:215
 msgid "Rejected"
 msgstr "Rejeitado"
 
-#: media/models.py:200 media/templates/admin/bookmarklet.html:199
+#: media/models.py:225 media/templates/admin/bookmarklet.html:199
 msgid "Auto"
 msgstr "Auto"
 
-#: media/models.py:287
+#: media/models.py:232
+msgid "GUID"
+msgstr "GUID"
+
+#: media/models.py:240
+msgid "Source URL"
+msgstr "URL de origem"
+
+#: media/models.py:243
+msgid "Media type"
+msgstr "Tipo de mídia"
+
+#: media/models.py:246
+msgid "Requested type"
+msgstr "Tipo solicitado"
+
+#: media/models.py:259 media/templates/admin/admin_stash_form.html:294
+#: media/templates/admin/grid_view.html:267
+msgid "Group"
+msgstr "Grupo"
+
+#: media/models.py:267
+#: media/templates/admin/admin_stash_confirm_multiple.html:198
+#: media/templates/admin/admin_stash_form.html:345
+#: media/templates/admin/admin_stash_progress.html:223
+#: media/templates/media/stash_progress.html:292
+msgid "Title"
+msgstr "Título"
+
+#: media/models.py:268 media/templates/admin/item_detail.html:342
+msgid "Description"
+msgstr "Descrição"
+
+#: media/models.py:269
+msgid "Author"
+msgstr "Autor"
+
+#: media/models.py:270
+msgid "Publish date"
+msgstr "Data de publicação"
+
+#: media/models.py:272
+msgid "Duration (seconds)"
+msgstr "Duração (segundos)"
+
+#: media/models.py:280
+msgid "File duration (seconds)"
+msgstr "Duração do arquivo (segundos)"
+
+#: media/models.py:284
+msgid ""
+"Duration measured in the downloaded file, filled in by ./manage.py "
+"check_durations."
+msgstr ""
+"Duração medida no arquivo baixado, preenchida por ./manage.py "
+"check_durations."
+
+#: media/models.py:288
+msgid "Duration checked"
+msgstr "Duração verificada"
+
+#: media/models.py:291
+msgid "When the file duration was last measured."
+msgstr "Quando a duração do arquivo foi medida pela última vez."
+
+#: media/models.py:293
+msgid "Extractor"
+msgstr "Extrator"
+
+#: media/models.py:294
+msgid "External ID"
+msgstr "ID externo"
+
+#: media/models.py:295
+msgid "Web page URL"
+msgstr "URL da página"
+
+#: media/models.py:298
+msgid "Content file"
+msgstr "Arquivo de conteúdo"
+
+#: media/models.py:299
+msgid "Thumbnail file"
+msgstr "Arquivo de miniatura"
+
+#: media/models.py:300
+msgid "Subtitles file"
+msgstr "Arquivo de legendas"
+
+#: media/models.py:303
+msgid "Thumbnail URL"
+msgstr "URL da miniatura"
+
+#: media/models.py:312
+msgid "Transcript produced by the speech-to-text server."
+msgstr "Transcrição gerada pelo servidor de voz para texto."
+
+#: media/models.py:315
+msgid "Transcript file"
+msgstr "Arquivo de transcrição"
+
+#: media/models.py:318
+msgid "WebVTT transcript file inside the item directory."
+msgstr "Arquivo de transcrição WebVTT no diretório do item."
+
+#: media/models.py:321
+msgid "Transcript created"
+msgstr "Transcrição criada"
+
+#: media/models.py:334
 msgid "Waiting"
 msgstr "Aguardando"
 
-#: media/models.py:288
+#: media/models.py:335
 msgid "Transcribing"
 msgstr "Transcrevendo"
 
-#: media/models.py:289
+#: media/models.py:336
 msgid "Done"
 msgstr "Concluído"
 
-#: media/models.py:290
+#: media/models.py:337 media/templates/admin/feed_links.html:356
 msgid "Failed"
 msgstr "Falhou"
+
+#: media/models.py:341
+msgid "Transcript status"
+msgstr "Status da transcrição"
+
+#: media/models.py:346
+msgid "Where this item is in the transcription process."
+msgstr "Em que etapa da transcrição este item está."
+
+#: media/models.py:349
+msgid "Transcript error"
+msgstr "Erro de transcrição"
+
+#: media/models.py:351
+msgid "Why the last transcription attempt failed."
+msgstr "Por que a última tentativa de transcrição falhou."
+
+#: media/models.py:353
+msgid "File size"
+msgstr "Tamanho do arquivo"
+
+#: media/models.py:354
+msgid "MIME type"
+msgstr "Tipo MIME"
+
+#: media/models.py:357
+msgid "Log file"
+msgstr "Arquivo de log"
+
+#: media/models.py:358
+msgid "Error message"
+msgstr "Mensagem de erro"
+
+#: media/models.py:362
+msgid "yt-dlp arguments"
+msgstr "Argumentos do yt-dlp"
+
+#: media/models.py:362
+msgid "Additional yt-dlp arguments"
+msgstr "Argumentos adicionais do yt-dlp"
+
+#: media/models.py:365
+msgid "ffmpeg arguments"
+msgstr "Argumentos do ffmpeg"
+
+#: media/models.py:365
+msgid "Additional ffmpeg arguments"
+msgstr "Argumentos adicionais do ffmpeg"
+
+#: media/models.py:372
+msgid "Downloaded"
+msgstr "Baixado"
+
+#: media/models.py:376
+msgid "Download attempts"
+msgstr "Tentativas de download"
+
+#: media/models.py:378
+msgid "How many times a download has been attempted for this item."
+msgstr "Quantas vezes se tentou baixar este item."
+
+#: media/models.py:381
+msgid "Next attempt"
+msgstr "Próxima tentativa"
+
+#: media/models.py:385
+msgid "Earliest time the paced queue may pick this item up (retry backoff)."
+msgstr ""
+"Momento mais cedo em que a fila pode retomar este item (intervalo entre "
+"tentativas)."
+
+#: media/models.py:389
+msgid "Updated"
+msgstr "Atualizado"
+
+#: media/models.py:393
+msgid "media item"
+msgstr "item"
+
+#: media/models.py:394
+msgid "media items"
+msgstr "itens"
+
+#: media/notifications.py:109
+#, python-format
+msgid "%(minutes)s min"
+msgstr "%(minutes)s min"
+
+#: media/notifications.py:142
+#, python-format
+msgid "New: %(title)s"
+msgstr "Novo: %(title)s"
+
+#: media/notifications.py:148
+#: media/templates/admin/admin_spotify_confirm.html:422
+#: media/templates/admin/item_detail.html:227
+#: media/templates/admin/item_detail.html:269
+msgid "Download"
+msgstr "Baixar"
+
+#: media/notifications.py:149 media/templates/admin/item_detail.html:231
+msgid "Reject"
+msgstr "Rejeitar"
+
+#: media/notifications.py:158
+msgid "Already handled"
+msgstr "Já tratado"
+
+#: media/notifications.py:159
+msgid "Request failed"
+msgstr "A solicitação falhou"
+
+#: media/notifications.py:160
+msgid "Could not reach StashCast"
+msgstr "Não foi possível conectar ao StashCast"
+
+#: media/notifications.py:178
+#, python-format
+msgid "Ready: %(title)s"
+msgstr "Pronto: %(title)s"
+
+#: media/service/errors.py:160
+msgid ""
+"This video cannot be downloaded with the current configuration (members-"
+"only, private, removed or region-blocked). Not retrying."
+msgstr ""
+"Este vídeo não pode ser baixado com a configuração atual (só para membros, "
+"privado, removido ou bloqueado na região). Sem novas tentativas."
+
+#: media/service/errors.py:164
+msgid "Not published yet (premiere or scheduled live); waiting until it airs."
+msgstr "Ainda não publicado (estreia ou live agendada); aguardando a exibição."
+
+#: media/service/errors.py:167
+msgid ""
+"YouTube refused the request (bot check, sign-in or rate limit). Set "
+"STASHCAST_YTDLP_COOKIES_FILE, or a proxy - see docs/YOUTUBE_AUTH.md."
+msgstr ""
+"O YouTube recusou a solicitação (verificação de bot, login ou limite de "
+"requisições). Defina STASHCAST_YTDLP_COOKIES_FILE ou um proxy – veja docs/"
+"YOUTUBE_AUTH.md."
+
+#: media/tasks.py:109
+#, python-format
+msgid "%(reason)s (gave up after %(attempts)s attempt(s))"
+msgstr "%(reason)s (desistiu após %(attempts)s tentativa(s))"
+
+#: media/tasks.py:131
+#, python-format
+msgid "%(reason)s (attempt %(attempt)s/%(max)s, retrying in %(minutes)s min)"
+msgstr ""
+"%(reason)s (tentativa %(attempt)s/%(max)s, nova tentativa em %(minutes)s min)"
+
+#: media/tasks.py:377
+#, python-format
+msgid "Abandoned in %(status)s for over %(minutes)s min (worker likely died)"
+msgstr ""
+"Abandonado em %(status)s por mais de %(minutes)s min (o worker provavelmente "
+"parou)"
+
+#: media/tasks.py:809
+#, python-format
+msgid "Prefetch failed: %(error)s"
+msgstr "A pré-busca falhou: %(error)s"
+
+#: media/tasks.py:934 media/tasks.py:990
+#, python-format
+msgid "Download failed: %(error)s"
+msgstr "O download falhou: %(error)s"
+
+#: media/tasks.py:1050
+#, python-format
+msgid "Processing failed: %(error)s"
+msgstr "O processamento falhou: %(error)s"
+
+#: media/tasks.py:1246
+msgid "Removed from the download queue"
+msgstr "Removido da fila de downloads"
 
 #: media/templates/admin/admin_spotify_confirm.html:5
 msgid "Spotify"
@@ -119,7 +1135,7 @@ msgstr "Início"
 #: media/templates/admin/admin_stash_confirm_multiple.html:171
 #: media/templates/admin/admin_stash_form.html:4
 #: media/templates/admin/admin_stash_form.html:244
-#: media/templates/admin/admin_stash_progress.html:196
+#: media/templates/admin/admin_stash_progress.html:196 stashcast/settings.py:84
 msgid "Add URL"
 msgstr "Adicionar URL"
 
@@ -138,6 +1154,13 @@ msgstr ""
 #: media/templates/admin/admin_spotify_confirm.html:338
 msgid "Search query:"
 msgstr "Pesquisa:"
+
+#: media/templates/admin/admin_spotify_confirm.html:359
+#, python-format
+msgid "%(counter)s result"
+msgid_plural "%(counter)s results"
+msgstr[0] "%(counter)s resultado"
+msgstr[1] "%(counter)s resultados"
 
 #: media/templates/admin/admin_spotify_confirm.html:379
 msgid "min"
@@ -173,20 +1196,14 @@ msgstr "Você pode tentar inserir uma URL personalizada abaixo."
 msgid "Enter a custom URL"
 msgstr "Insira uma URL personalizada"
 
-#: media/templates/admin/admin_spotify_confirm.html:422
-#: media/templates/admin/item_detail.html:227
-#: media/templates/admin/item_detail.html:269
-msgid "Download"
-msgstr "Baixar"
+#: media/templates/admin/admin_spotify_confirm.html:471
+msgid "Please select a result or enter a custom URL."
+msgstr "Selecione um resultado ou informe uma URL personalizada."
 
 #: media/templates/admin/admin_stash_confirm_multiple.html:5
 #: media/templates/admin/admin_stash_confirm_multiple.html:179
 msgid "Confirm Download"
 msgstr "Confirmar download"
-
-#: media/templates/admin/admin_stash_confirm_multiple.html:5
-msgid "Items"
-msgstr "Itens"
 
 #: media/templates/admin/admin_stash_confirm_multiple.html:172
 msgid "Confirm Multiple Items"
@@ -212,17 +1229,6 @@ msgstr ""
 #: media/templates/admin/admin_stash_confirm_multiple.html:191
 msgid "Media type:"
 msgstr "Tipo de mídia:"
-
-#: media/templates/admin/admin_stash_confirm_multiple.html:198
-#: media/templates/admin/admin_stash_form.html:345
-#: media/templates/admin/admin_stash_progress.html:223
-#: media/templates/media/stash_progress.html:292
-msgid "Title"
-msgstr "Título"
-
-#: media/templates/admin/admin_stash_confirm_multiple.html:199
-msgid "Duration"
-msgstr "Duração"
 
 #: media/templates/admin/admin_stash_confirm_multiple.html:226
 #, python-format
@@ -290,11 +1296,6 @@ msgstr "Apenas áudio"
 msgid "Auto-detect will determine if the content is audio or video"
 msgstr "A detecção automática determinará se o conteúdo é áudio ou vídeo"
 
-#: media/templates/admin/admin_stash_form.html:294
-#: media/templates/admin/grid_view.html:267
-msgid "Group"
-msgstr "Grupo"
-
 #: media/templates/admin/admin_stash_form.html:296
 msgid "— No group —"
 msgstr "— Sem grupo —"
@@ -320,6 +1321,7 @@ msgid "Advanced Options"
 msgstr "Opções avançadas"
 
 #: media/templates/admin/admin_stash_form.html:316
+#: media/templates/admin/admin_stash_form.html:402
 msgid "Single URL"
 msgstr "URL única"
 
@@ -337,6 +1339,7 @@ msgstr ""
 "separado."
 
 #: media/templates/admin/admin_stash_form.html:334
+#: media/templates/admin/admin_stash_form.html:405
 msgid "Add to StashCast"
 msgstr "Adicionar ao StashCast"
 
@@ -348,34 +1351,25 @@ msgstr "Itens recentes"
 msgid "Type"
 msgstr "Tipo"
 
-#: media/templates/admin/admin_stash_form.html:347
-#: media/templates/admin/admin_stash_progress.html:209
-#: media/templates/admin/preferences.html:152
-#: media/templates/media/stash_progress.html:278
-msgid "Status"
-msgstr "Status"
-
-#: media/templates/admin/admin_stash_form.html:348
-msgid "Created"
-msgstr "Criado"
-
-#: media/templates/admin/admin_stash_form.html:349
-msgid "Actions"
-msgstr "Ações"
-
 #: media/templates/admin/admin_stash_form.html:362
 #: media/templates/admin/preferences.html:182
 #: media/templates/admin/preferences.html:245
 msgid "ago"
 msgstr "atrás"
 
-#: media/templates/admin/admin_stash_form.html:364
-msgid "View"
-msgstr "Ver"
-
 #: media/templates/admin/admin_stash_form.html:366
 msgid "Preview"
 msgstr "Visualizar"
+
+#: media/templates/admin/admin_stash_form.html:396
+#, python-format
+msgid "Bulk (%%(count)s URLs)"
+msgstr "Várias URLs (%%(count)s)"
+
+#: media/templates/admin/admin_stash_form.html:399
+#, python-format
+msgid "Add %%(count)s URLs to StashCast"
+msgstr "Adicionar %%(count)s URLs ao StashCast"
 
 #: media/templates/admin/admin_stash_progress.html:5
 msgid "Processing Media - StashCast"
@@ -414,6 +1408,11 @@ msgstr "Ver mídia"
 #: media/templates/admin/admin_stash_progress.html:243
 msgid "Add Another URL"
 msgstr "Adicionar outra URL"
+
+#: media/templates/admin/admin_stash_progress.html:346
+#: media/templates/media/stash_progress.html:450
+msgid "Connection Error"
+msgstr "Erro de conexão"
 
 #: media/templates/admin/bookmarklet.html:5
 msgid "Bookmarklet Tool"
@@ -560,7 +1559,11 @@ msgstr "URL de teste:"
 msgid "Test Bookmarklet"
 msgstr "Testar favorito"
 
-#: media/templates/admin/feed_links.html:4
+#: media/templates/admin/bookmarklet.html:286
+msgid "Code copied to clipboard!"
+msgstr "Código copiado para a área de transferência!"
+
+#: media/templates/admin/feed_links.html:4 stashcast/settings.py:104
 msgid "Feed Links"
 msgstr "Links de feeds"
 
@@ -638,20 +1641,22 @@ msgstr "URL de inscrição:"
 #: media/templates/admin/feed_links.html:268
 #: media/templates/admin/feed_links.html:289
 #: media/templates/admin/feed_links.html:319
+#: media/templates/admin/feed_links.html:352
+#: media/templates/admin/feed_links.html:357
 msgid "Copy"
 msgstr "Copiar"
 
 #: media/templates/admin/feed_links.html:230
 #: media/templates/admin/feed_links.html:251
 #: media/templates/admin/feed_links.html:272
-#: media/templates/admin/feed_links.html:323
+#: media/templates/admin/feed_links.html:323 stashcast/settings.py:89
 msgid "Grid View"
 msgstr "Visualização em grade"
 
 #: media/templates/admin/feed_links.html:231
 #: media/templates/admin/feed_links.html:252
 #: media/templates/admin/feed_links.html:273
-#: media/templates/admin/feed_links.html:324
+#: media/templates/admin/feed_links.html:324 stashcast/settings.py:94
 msgid "List View"
 msgstr "Visualização em lista"
 
@@ -749,6 +1754,10 @@ msgstr ""
 "Crie um grupo ao adicionar uma URL, ou no admin, e o feed dele aparecerá "
 "aqui."
 
+#: media/templates/admin/feed_links.html:349
+msgid "Copied!"
+msgstr "Copiado!"
+
 #: media/templates/admin/grid_view.html:202
 msgid "Media Grid"
 msgstr "Grade de mídia"
@@ -807,14 +1816,6 @@ msgstr "Tente ajustar seus filtros ou adicionar alguns itens de mídia."
 msgid "New upload from the channel. Download it into the feed, or reject it?"
 msgstr "Novo vídeo do canal. Baixá-lo para o feed ou rejeitá-lo?"
 
-#: media/templates/admin/item_detail.html:231
-msgid "Reject"
-msgstr "Rejeitar"
-
-#: media/templates/admin/item_detail.html:240
-msgid "Edit"
-msgstr "Editar"
-
 #: media/templates/admin/item_detail.html:244
 msgid "Archive"
 msgstr "Arquivar"
@@ -863,19 +1864,11 @@ msgstr "Duração:"
 msgid "Error:"
 msgstr "Erro:"
 
-#: media/templates/admin/item_detail.html:313
-msgid "Summary"
-msgstr "Resumo"
-
-#: media/templates/admin/item_detail.html:320
-msgid "Description"
-msgstr "Descrição"
-
-#: media/templates/admin/item_detail.html:330
+#: media/templates/admin/item_detail.html:319
 msgid "Your browser does not support audio element."
 msgstr "Seu navegador não suporta o elemento de áudio."
 
-#: media/templates/admin/item_detail.html:338
+#: media/templates/admin/item_detail.html:327
 msgid "Your browser does not support video element."
 msgstr "Seu navegador não suporta o elemento de vídeo."
 
@@ -896,7 +1889,7 @@ msgid "Added:"
 msgstr "Adicionado:"
 
 #: media/templates/admin/notifications.html:4
-#: media/templates/admin/notifications.html:58
+#: media/templates/admin/notifications.html:58 stashcast/settings.py:109
 msgid "Notifications"
 msgstr "Notificações"
 
@@ -974,7 +1967,7 @@ msgstr "Não foi possível registrar o service worker:"
 
 #: media/templates/admin/preferences.html:4
 #: media/templates/admin/preferences.html:150
-#: media/templates/admin/preferences.html:230
+#: media/templates/admin/preferences.html:230 stashcast/settings.py:114
 msgid "About"
 msgstr "Sobre"
 
@@ -1112,9 +2105,185 @@ msgstr "StashCast - Processando mídia"
 msgid "items queued"
 msgstr "itens na fila"
 
+#: media/templates/media/stash_progress.html:358
+msgid "Processing multiple items..."
+msgstr "Processando vários itens..."
+
+#: media/templates/media/stash_progress.html:370
+#: media/templates/media/stash_progress.html:378
+#, python-format
+msgid "Closing this tab in %%(seconds)ss..."
+msgstr "Fechando esta aba em %%(seconds)s s..."
+
+#: media/templates/media/stash_progress.html:432
+#, python-format
+msgid "This item is ready! %%(count)s more item(s) processing in background."
+msgstr ""
+"Este item está pronto! Mais %%(count)s item(ns) em processamento em segundo "
+"plano."
+
 #: media/views.py:81
 msgid "Download media from the web and publish it as podcast feeds"
 msgstr "Baixe mídia da web e publique-a como feeds de podcast"
+
+#: media/views.py:497 media/views.py:738 media/views.py:846
+msgid "Demo users are not allowed to add URLs."
+msgstr "Usuários de demonstração não podem adicionar URLs."
+
+#: media/views.py:522
+msgid "No valid URLs found in bulk input"
+msgstr "Nenhuma URL válida encontrada na lista"
+
+#: media/views.py:571
+#, python-format
+msgid "Queued %(count)s URL(s) for download"
+msgstr "%(count)s URL(s) na fila para download"
+
+#: media/views.py:573
+#, python-format
+msgid "(%(count)s invalid URL(s) skipped)"
+msgstr "(%(count)s URL(s) inválida(s) ignorada(s))"
+
+#: media/views.py:581
+msgid "No valid URLs were processed"
+msgstr "Nenhuma URL válida foi processada"
+
+#: media/views.py:632
+#, python-format
+msgid "Error fetching Spotify metadata: %(error)s"
+msgstr "Erro ao buscar os metadados do Spotify: %(error)s"
+
+#: media/views.py:685 media/views.py:900
+#, python-format
+msgid "Re-fetching existing item: %(guid)s"
+msgstr "Baixando novamente o item existente: %(guid)s"
+
+#: media/views.py:691
+#, python-format
+msgid "Created new item: %(guid)s"
+msgstr "Novo item criado: %(guid)s"
+
+#: media/views.py:699
+msgid "Please provide a URL"
+msgstr "Informe uma URL"
+
+#: media/views.py:732
+msgid "No multi-item data found. Please try again."
+msgstr "Nenhum dado de vários itens encontrado. Tente novamente."
+
+#: media/views.py:793
+#, python-format
+msgid "Queued %(count)s item(s) for download"
+msgstr "%(count)s item(ns) na fila para download"
+
+#: media/views.py:840
+msgid "No Spotify URL found. Please try again."
+msgstr "Nenhuma URL do Spotify encontrada. Tente novamente."
+
+#: media/views.py:858
+msgid "Please select a YouTube result or enter a custom URL."
+msgstr "Selecione um resultado do YouTube ou informe uma URL personalizada."
+
+#: media/views.py:910
+#, python-format
+msgid "Downloading from YouTube (original: Spotify): %(title)s"
+msgstr "Baixando do YouTube (original: Spotify): %(title)s"
+
+#: media/views.py:911
+msgid "Unknown"
+msgstr "Desconhecido"
+
+#: media/views.py:1203
+#, python-format
+msgid ""
+"Worker unavailable: no heartbeat from the Huey worker and the task has been "
+"waiting %(seconds)s seconds. Start it with: python manage.py run_huey"
+msgstr ""
+"Worker indisponível: nenhum sinal do worker do Huey e a tarefa está "
+"esperando há %(seconds)s segundos. Inicie com: python manage.py run_huey"
+
+#: media/views.py:1266
+#, python-format
+msgid "Archived: %(title)s"
+msgstr "Arquivado: %(title)s"
+
+#: media/views.py:1268
+msgid "Only ready items can be archived."
+msgstr "Só é possível arquivar itens prontos."
+
+#: media/views.py:1291
+#, python-format
+msgid "Re-fetching: %(title)s"
+msgstr "Baixando novamente: %(title)s"
+
+#: media/views.py:1313
+#, python-format
+msgid "Regenerating summary for: %(title)s"
+msgstr "Gerando novamente o resumo de: %(title)s"
+
+#: media/views.py:1316
+msgid "No subtitles available for summary generation."
+msgstr "Não há legendas para gerar o resumo."
+
+#: media/views.py:1339
+#, python-format
+msgid "Unarchived: %(title)s"
+msgstr "Desarquivado: %(title)s"
+
+#: media/views.py:1341
+msgid "Only archived items can be unarchived."
+msgstr "Só é possível desarquivar itens arquivados."
+
+#: media/views.py:1368
+msgid "This item is no longer awaiting approval."
+msgstr "Este item não aguarda mais aprovação."
+
+#: media/views.py:1370
+#, python-format
+msgid "Downloading: %(title)s"
+msgstr "Baixando: %(title)s"
+
+#: media/views.py:1372
+#, python-format
+msgid "Rejected: %(title)s"
+msgstr "Rejeitado: %(title)s"
+
+#: media/views.py:1421
+msgid "Test notification - push works on this device."
+msgstr "Notificação de teste – o push funciona neste dispositivo."
+
+#: media/views.py:1429
+#, python-format
+msgid "Test notification sent to %(count)s device(s)."
+msgstr "Notificação de teste enviada para %(count)s dispositivo(s)."
+
+#: media/views.py:1432
+msgid "No device received the notification."
+msgstr "Nenhum dispositivo recebeu a notificação."
+
+#: stashcast/settings.py:81
+msgid "Tools"
+msgstr "Ferramentas"
+
+#: stashcast/settings.py:99
+msgid "Bookmarklet"
+msgstr "Bookmarklet"
+
+#: stashcast/settings.py:119
+msgid "Site Home"
+msgstr "Página inicial"
+
+#: stashcast/settings.py:126
+msgid "Administration"
+msgstr "Administração"
+
+#: stashcast/settings.py:129
+msgid "Media Items"
+msgstr "Itens"
+
+#: stashcast/settings.py:134
+msgid "Awaiting Approval"
+msgstr "Aguardando aprovação"
 
 #: templates/admin/base_site.html:19
 msgid "Django site admin"

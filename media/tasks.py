@@ -10,6 +10,7 @@ from typing import List
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from huey import crontab, signals
 from huey.contrib.djhuey import db_periodic_task, db_task, on_startup, signal
 
@@ -105,7 +106,10 @@ def schedule_retry_or_fail(item, reason):
         max_attempts = max(1, int(settings.STASHCAST_DOWNLOAD_MAX_ATTEMPTS))
 
     if item.download_attempts >= max_attempts:
-        message = f'{reason} (gave up after {item.download_attempts} attempt(s))'
+        message = _('%(reason)s (gave up after %(attempts)s attempt(s))') % {
+            'reason': reason,
+            'attempts': item.download_attempts,
+        }
         item.status = MediaItem.STATUS_ERROR
         item.error_message = f'{message} {hint}'.strip()
         item.next_attempt_at = None
@@ -124,10 +128,13 @@ def schedule_retry_or_fail(item, reason):
 
     minutes = max(1, int(wait.total_seconds() // 60))
     item.status = MediaItem.STATUS_QUEUED
-    item.error_message = (
-        f'{reason} (attempt {item.download_attempts}/{max_attempts}, '
-        f'retrying in {minutes} min) {hint}'
-    ).strip()
+    retry = _('%(reason)s (attempt %(attempt)s/%(max)s, retrying in %(minutes)s min)') % {
+        'reason': reason,
+        'attempt': item.download_attempts,
+        'max': max_attempts,
+        'minutes': minutes,
+    }
+    item.error_message = f'{retry} {hint}'.strip()
     item.next_attempt_at = timezone.now() + wait
     item.save()
     return True
@@ -367,7 +374,10 @@ def recover_stuck_items(logger=None):
 
     recovered = []
     for item in stuck:
-        reason = f'Abandoned in {item.status} for over {timeout} min (worker likely died)'
+        reason = _('Abandoned in %(status)s for over %(minutes)s min (worker likely died)') % {
+            'status': item.status,
+            'minutes': timeout,
+        }
         # Count the abandoned attempt here: a worker that died before process_media
         # ran never incremented it, and without this the item would bounce between
         # QUEUED and PREFETCHING forever instead of eventually giving up. An attempt
@@ -796,7 +806,7 @@ def _process_media_batch(guids, active_guids):
                 for guid, item in initial_items.items():
                     if item.source_url == url:
                         item.status = MediaItem.STATUS_ERROR
-                        item.error_message = f'Prefetch failed: {error}'
+                        item.error_message = _('Prefetch failed: %(error)s') % {'error': error}
                         item.save()
                         write_log(batch_log_path, f'FAILED: {url} - {error}')
                         break
@@ -921,7 +931,7 @@ def _process_media_batch(guids, active_guids):
 
             except Exception as e:
                 item.status = MediaItem.STATUS_ERROR
-                item.error_message = f'Download failed: {str(e)}'
+                item.error_message = _('Download failed: %(error)s') % {'error': e}
                 item.save()
                 write_log(log_path, f'Error: {e}')
                 write_log(batch_log_path, f'FAILED direct download: {item.source_url} - {e}')
@@ -977,7 +987,7 @@ def _process_media_batch(guids, active_guids):
                 log_path = item_log_paths[guid]
 
                 item.status = MediaItem.STATUS_ERROR
-                item.error_message = f'Download failed: {error}'
+                item.error_message = _('Download failed: %(error)s') % {'error': error}
                 item.save()
                 write_log(log_path, f'Download error: {error}')
                 write_log(batch_log_path, f'FAILED download: {url} - {error}')
@@ -1037,7 +1047,7 @@ def _process_media_batch(guids, active_guids):
 
             except Exception as e:
                 item.status = MediaItem.STATUS_ERROR
-                item.error_message = f'Processing failed: {str(e)}'
+                item.error_message = _('Processing failed: %(error)s') % {'error': e}
                 item.save()
                 write_log(log_path, f'Error during processing: {e}')
                 write_log(batch_log_path, f'FAILED processing: {item.title} - {e}')
@@ -1233,7 +1243,7 @@ def cancel_download(items):
         if item.status != MediaItem.STATUS_QUEUED:
             continue
         item.status = MediaItem.STATUS_ERROR
-        item.error_message = 'Removed from the download queue'
+        item.error_message = _('Removed from the download queue')
         item.next_attempt_at = None
         item.save(update_fields=['status', 'error_message', 'next_attempt_at', 'updated_at'])
         cancelled += 1

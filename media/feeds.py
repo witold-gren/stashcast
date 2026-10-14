@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.templatetags.static import static
 from django.utils import timezone
 from django.utils.feedgenerator import Rss201rev2Feed
+from django.utils.translation import gettext as _
 
 from media.models import MediaGroup, MediaItem
 from media.service.media_info import get_mime_type
@@ -210,9 +211,7 @@ class BaseFeed(Feed):
         transcript_url = self._transcript_url(item)
         if transcript_url:
             extra['transcript'] = transcript_url
-            extra['transcript_type'] = get_mime_type(
-                item.transcript_path or item.subtitle_path
-            )
+            extra['transcript_type'] = get_mime_type(item.transcript_path or item.subtitle_path)
             extra['transcript_language'] = self._transcript_language(item)
         return extra
 
@@ -317,9 +316,14 @@ class BaseFeed(Feed):
 class AudioFeed(BaseFeed):
     """Podcast feed for audio items"""
 
-    title = 'StashCast Audio'
+    def title(self):
+        return _('StashCast Audio')
+
     link = '/feeds/audio.xml'
-    description = 'Downloaded audio content'
+
+    def description(self):
+        return _('Downloaded audio content')
+
     logo_filename = 'feed-audio.png'
 
     def items(self):
@@ -334,9 +338,14 @@ class AudioFeed(BaseFeed):
 class VideoFeed(BaseFeed):
     """Podcast feed for video items"""
 
-    title = 'StashCast Video'
+    def title(self):
+        return _('StashCast Video')
+
     link = '/feeds/video.xml'
-    description = 'Downloaded video content'
+
+    def description(self):
+        return _('Downloaded video content')
+
     logo_filename = 'feed-video.png'
 
     def items(self):
@@ -353,7 +362,10 @@ class CombinedFeed(BaseFeed):
 
     title = 'StashCast'
     link = '/feeds/combined.xml'
-    description = 'Downloaded audio and video content'
+
+    def description(self):
+        return _('Downloaded audio and video content')
+
     logo_filename = 'feed-combined.png'
 
     def items(self):
@@ -363,9 +375,14 @@ class CombinedFeed(BaseFeed):
 class ArchiveFeed(BaseFeed):
     """Podcast feed for archived media items (audio and video)"""
 
-    title = 'StashCast Archive'
+    def title(self):
+        return _('StashCast Archive')
+
     link = '/feeds/archive.xml'
-    description = 'Archived audio and video content'
+
+    def description(self):
+        return _('Archived audio and video content')
+
     logo_filename = 'feed-archive.png'
 
     def get_queryset(self, obj=None):
@@ -394,7 +411,7 @@ class GroupFeed(BaseFeed):
         return obj.name
 
     def description(self, obj):
-        return f'Downloaded media in the "{obj.name}" group'
+        return _('Downloaded media in the "%(group)s" group') % {'group': obj.name}
 
     def link(self, obj):
         return f'/feeds/group/{obj.slug}.xml'
