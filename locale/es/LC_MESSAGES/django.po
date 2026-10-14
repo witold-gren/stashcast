@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 21:15+0000\n"
+"POT-Creation-Date: 2026-10-14 21:42+0000\n"
 "PO-Revision-Date: 2026-01-12 21:30+0000\n"
 "Last-Translator: StashCast Team\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -575,35 +575,35 @@ msgstr[2] "Se desarchivaron %(count)s elementos."
 msgid "Unarchive selected items"
 msgstr "Desarchivar los elementos seleccionados"
 
-#: media/feeds.py:322
+#: media/feeds.py:320
 msgid "StashCast Audio"
 msgstr "StashCast Audio"
 
-#: media/feeds.py:324
+#: media/feeds.py:325
 msgid "Downloaded audio content"
 msgstr "Contenido de audio descargado"
 
-#: media/feeds.py:339
+#: media/feeds.py:342
 msgid "StashCast Video"
 msgstr "StashCast Vídeo"
 
-#: media/feeds.py:341
+#: media/feeds.py:347
 msgid "Downloaded video content"
 msgstr "Contenido de vídeo descargado"
 
-#: media/feeds.py:358
+#: media/feeds.py:367
 msgid "Downloaded audio and video content"
 msgstr "Contenido de audio y vídeo descargado"
 
-#: media/feeds.py:368
+#: media/feeds.py:379
 msgid "StashCast Archive"
 msgstr "StashCast Archivo"
 
-#: media/feeds.py:370
+#: media/feeds.py:384
 msgid "Archived audio and video content"
 msgstr "Contenido de audio y vídeo archivado"
 
-#: media/feeds.py:399
+#: media/feeds.py:414
 #, python-format
 msgid "Downloaded media in the \"%(group)s\" group"
 msgstr "Medios descargados del grupo «%(group)s»"
@@ -2308,10 +2308,14 @@ msgid "Administration"
 msgstr "Administración"
 
 #: stashcast/settings.py:129
-msgid "Media Items"
-msgstr "Elementos"
+msgid "Media Groups"
+msgstr "Grupos"
 
 #: stashcast/settings.py:134
+msgid "Media Items"
+msgstr "Archivos"
+
+#: stashcast/settings.py:139
 msgid "Awaiting Approval"
 msgstr "Pendientes de aprobación"
 

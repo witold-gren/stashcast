@@ -126,6 +126,11 @@ UNFOLD = {
                 'title': _('Administration'),
                 'items': [
                     {
+                        'title': _('Media Groups'),
+                        'link': '/admin/media/mediagroup/',
+                        'icon': 'folder_copy',
+                    },
+                    {
                         'title': _('Media Items'),
                         'link': '/admin/media/mediaitem/',
                         'icon': 'play_circle',

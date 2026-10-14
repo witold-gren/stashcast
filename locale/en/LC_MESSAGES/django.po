@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 21:15+0000\n"
+"POT-Creation-Date: 2026-10-14 21:42+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -521,35 +521,35 @@ msgstr[1] ""
 msgid "Unarchive selected items"
 msgstr ""
 
-#: media/feeds.py:322
+#: media/feeds.py:320
 msgid "StashCast Audio"
 msgstr ""
 
-#: media/feeds.py:324
+#: media/feeds.py:325
 msgid "Downloaded audio content"
 msgstr ""
 
-#: media/feeds.py:339
+#: media/feeds.py:342
 msgid "StashCast Video"
 msgstr ""
 
-#: media/feeds.py:341
+#: media/feeds.py:347
 msgid "Downloaded video content"
 msgstr ""
 
-#: media/feeds.py:358
+#: media/feeds.py:367
 msgid "Downloaded audio and video content"
 msgstr ""
 
-#: media/feeds.py:368
+#: media/feeds.py:379
 msgid "StashCast Archive"
 msgstr ""
 
-#: media/feeds.py:370
+#: media/feeds.py:384
 msgid "Archived audio and video content"
 msgstr ""
 
-#: media/feeds.py:399
+#: media/feeds.py:414
 #, python-format
 msgid "Downloaded media in the \"%(group)s\" group"
 msgstr ""
@@ -2150,10 +2150,14 @@ msgid "Administration"
 msgstr ""
 
 #: stashcast/settings.py:129
-msgid "Media Items"
+msgid "Media Groups"
 msgstr ""
 
 #: stashcast/settings.py:134
+msgid "Media Items"
+msgstr ""
+
+#: stashcast/settings.py:139
 msgid "Awaiting Approval"
 msgstr ""
 
