@@ -251,6 +251,29 @@ class AdminItemDetailViewTest(TestCase):
         # Should contain audio or video tag
         self.assertIn(b'<audio', response.content)
 
+    def test_item_detail_player_comes_before_the_description(self):
+        """The player used to sit at the very bottom, under a long description"""
+        for media_type, tag, path in (
+            (MediaItem.MEDIA_TYPE_AUDIO, b'<audio', 'content.m4a'),
+            (MediaItem.MEDIA_TYPE_VIDEO, b'<video', 'content.mp4'),
+        ):
+            item = MediaItem.objects.create(
+                source_url=f'http://example.com/{path}',
+                requested_type=media_type,
+                slug=f'player-{media_type}',
+                title='Episode',
+                media_type=media_type,
+                status=MediaItem.STATUS_READY,
+                content_path=path,
+                summary='Short summary',
+                description='Long description text',
+            )
+
+            content = self.client.get(f'/admin/tools/item/{item.guid}/').content
+
+            self.assertLess(content.index(tag), content.index(b'Short summary'))
+            self.assertLess(content.index(tag), content.index(b'Long description text'))
+
     def test_item_detail_view_shows_thumbnail(self):
         """Test that item detail shows thumbnail if available"""
         item = MediaItem.objects.create(

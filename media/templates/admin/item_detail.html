@@ -302,10 +302,32 @@
         </div>
     {% endif %}
 
-    {% if item.thumbnail_path and thumbnail_url %}
+    {% if item.is_ready and media_url and item.media_type != 'audio' %}
+        {# Video: the thumbnail becomes the player's poster instead of a second image #}
+    {% elif item.thumbnail_path and thumbnail_url %}
         <img src="{{ thumbnail_url }}" alt="{{ item.title }}" class="thumbnail">
     {% elif item.thumbnail_url %}
         <img src="{{ item.thumbnail_url }}" alt="{{ item.title }}" class="thumbnail" referrerpolicy="no-referrer">
+    {% endif %}
+
+    {# The player comes before the summary and description, not below them #}
+    {% if item.is_ready and media_url %}
+        <div class="player">
+            {% if item.media_type == 'audio' %}
+                <audio controls>
+                    <source src="{{ media_url }}" type="{{ item.mime_type }}">
+                    {% trans "Your browser does not support audio element." %}
+                </audio>
+            {% else %}
+                <video controls{% if item.thumbnail_path and thumbnail_url %} poster="{{ thumbnail_url }}"{% endif %}>
+                    <source src="{{ media_url }}" type="{{ item.mime_type }}">
+                    {% if subtitle_url %}
+                        <track kind="subtitles" src="{{ subtitle_url }}" srclang="en" label="English">
+                    {% endif %}
+                    {% trans "Your browser does not support video element." %}
+                </video>
+            {% endif %}
+        </div>
     {% endif %}
 
     {% if item.summary %}
@@ -322,23 +344,5 @@
         </div>
     {% endif %}
 
-    {% if item.is_ready and media_url %}
-        <div class="player">
-            {% if item.media_type == 'audio' %}
-                <audio controls>
-                    <source src="{{ media_url }}" type="{{ item.mime_type }}">
-                    {% trans "Your browser does not support audio element." %}
-                </audio>
-            {% else %}
-                <video controls>
-                    <source src="{{ media_url }}" type="{{ item.mime_type }}">
-                    {% if subtitle_url %}
-                        <track kind="subtitles" src="{{ subtitle_url }}" srclang="en" label="English">
-                    {% endif %}
-                    {% trans "Your browser does not support video element." %}
-                </video>
-            {% endif %}
-        </div>
-    {% endif %}
 </div>
 {% endblock %}
