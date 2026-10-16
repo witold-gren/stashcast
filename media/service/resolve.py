@@ -95,6 +95,10 @@ class PrefetchResult:
     channel_id: Optional[str] = None
     channel_handle: Optional[str] = None
     channel_url: Optional[str] = None
+    # yt-dlp's live_status ('is_live', 'is_upcoming', 'post_live', 'was_live', ...) and
+    # the scheduled start of a premiere / live stream, as a Unix timestamp
+    live_status: Optional[str] = None
+    release_timestamp: Optional[int] = None
     # Multi-item support
     entries: List[EntryInfo] = field(default_factory=list)
     is_multiple: bool = False
@@ -346,6 +350,8 @@ def _prefetch_ytdlp_inner(url, logger=None):
         uploader_id = info.get('uploader_id') or ''
         result.channel_handle = uploader_id if uploader_id.startswith('@') else None
         result.channel_url = info.get('channel_url') or info.get('uploader_url')
+        result.live_status = info.get('live_status')
+        result.release_timestamp = info.get('release_timestamp')
 
         # Check for video/audio streams
         formats = info.get('formats', [])

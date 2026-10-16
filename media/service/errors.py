@@ -52,6 +52,8 @@ _SCHEDULED_PATTERNS = (
     'is scheduled for',
     'this video is upcoming',
     'not yet available',
+    # Our own reason for a premiere or live stream that is still on air
+    'still airing',
 )
 
 _BLOCKED_PATTERNS = (

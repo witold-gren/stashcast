@@ -580,6 +580,8 @@ def _process_media(guid):
         # READY
         item.status = MediaItem.STATUS_READY
         item.downloaded_at = timezone.now()
+        # Whatever went wrong on an earlier attempt no longer applies
+        item.error_message = ''
         item.save()
         write_log(log_path, '=== READY ===')
         write_log(log_path, f'Completed successfully: {item.title}')
@@ -1029,6 +1031,7 @@ def _process_media_batch(guids, active_guids):
 
                 item.status = MediaItem.STATUS_READY
                 item.downloaded_at = timezone.now()
+                item.error_message = ''
                 item.save()
                 write_log(log_path, '=== READY ===')
                 update_progress(guid, MediaItem.STATUS_READY, 100)
@@ -1730,7 +1733,8 @@ def prefetch_for_approval(guid):
 
     listing_title = item.title
     try:
-        prefetch_ytdlp(item, None, None)
+        # An upcoming premiere can be approved before it airs; the download waits for it
+        prefetch_ytdlp(item, None, None, allow_live=True)
     except Exception as e:
         _logger.warning('Prefetch for approval of %s failed: %s', guid, e)
 

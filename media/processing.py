@@ -15,6 +15,7 @@ All functions work with MediaItem model instances and handle:
 
 import fcntl
 import logging
+import math
 import os
 import shutil
 import threading
@@ -31,6 +32,7 @@ from django.utils import timezone
 from media.models import MediaItem
 from media.service.download import download_direct as service_download_direct
 from media.service.download import download_file as service_download_file
+from media.service.download import AIRING_STATUSES
 from media.service.download import download_ytdlp as service_download_ytdlp
 
 # Note: add_metadata_without_transcode and process_subtitle from media.service.process
@@ -100,8 +102,49 @@ def _apply_prefetch_result(item, result, log_path):
     log_prefetch_result(lambda m: write_log(log_path, m), item)
 
 
-def _prefetch_with_strategy(item, strategy, log_path):
-    """Shared prefetch implementation backed by service.resolve."""
+def still_airing_reason(result, now=None):
+    """Why a premiere or live stream must not be downloaded yet, or None.
+
+    Downloading one while it is on air records it live - from the moment the download
+    starts to the moment the broadcast ends - so the file misses everything before that
+    and comes out shorter than the video. A premiere airs for as long as the video
+    lasts, so the full file only exists after its start PLUS its duration.
+
+    The reason is a plain English sentence on purpose: errors.classify_download_error
+    files "still airing" as scheduled, and parse_wait_hint reads the "in N minutes"
+    from it to retry right after the broadcast ends.
+
+    Args:
+        result: PrefetchResult
+        now: Current Unix time (for tests)
+
+    Returns:
+        str or None
+    """
+    status = result.live_status
+    if status not in AIRING_STATUSES:
+        return None
+
+    now = time.time() if now is None else now
+    if status != 'post_live' and result.release_timestamp:
+        ends_at = result.release_timestamp + (result.duration_seconds or 0)
+        if ends_at > now:
+            minutes = max(1, math.ceil((ends_at - now) / 60))
+            return (
+                f'Premiere or live stream still airing (live_status={status}); '
+                f'it ends in {minutes} minutes'
+            )
+    # A live stream of unknown length, or one YouTube is still processing after it
+    # ended: no end time to aim for, so the regular scheduled retry pacing applies
+    return f'Premiere or live stream still airing (live_status={status}); end time unknown'
+
+
+def _prefetch_with_strategy(item, strategy, log_path, allow_live=False):
+    """Shared prefetch implementation backed by service.resolve.
+
+    Raises when the video is a premiere or live stream still on air, unless
+    ``allow_live`` - metadata of an airing video is fine, its file is not.
+    """
     try:
         result = service_prefetch(
             item.source_url, strategy, logger=lambda m: write_log(log_path, m)
@@ -123,6 +166,12 @@ def _prefetch_with_strategy(item, strategy, log_path):
         )
 
     _apply_prefetch_result(item, result, log_path)
+
+    if not allow_live:
+        reason = still_airing_reason(result)
+        if reason:
+            write_log(log_path, f'Not downloading yet: {reason}')
+            raise Exception(reason)
 
 
 def prefetch_direct(item, tmp_dir, log_path):
@@ -149,7 +198,7 @@ def prefetch_file(item, tmp_dir, log_path):
     _prefetch_with_strategy(item, 'file', log_path)
 
 
-def prefetch_ytdlp(item, tmp_dir, log_path):
+def prefetch_ytdlp(item, tmp_dir, log_path, allow_live=False):
     """
     Prefetch metadata using yt-dlp (with HTML extraction fallback).
 
@@ -157,8 +206,10 @@ def prefetch_ytdlp(item, tmp_dir, log_path):
         item: MediaItem instance
         tmp_dir: Temporary directory path (unused, for consistency)
         log_path: Path to log file
+        allow_live: Accept a premiere / live stream that is still on air (metadata
+            only - see still_airing_reason)
     """
-    _prefetch_with_strategy(item, 'ytdlp', log_path)
+    _prefetch_with_strategy(item, 'ytdlp', log_path, allow_live=allow_live)
 
 
 def extract_metadata_with_ffprobe(item, file_path, log_path):

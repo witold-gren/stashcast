@@ -97,6 +97,36 @@ def apply_network_opts(ydl_opts, logger=None):
     return ydl_opts
 
 
+# live_status values of a video that cannot be downloaded in full yet: downloading a
+# premiere or live stream while it is on air records it from that moment on only
+AIRING_STATUSES = ('is_live', 'is_upcoming', 'post_live')
+
+
+def airing_filter(skipped=None):
+    """A yt-dlp match_filter that refuses premieres and live streams still on air.
+
+    A safety net behind the prefetch check (media.processing.still_airing_reason): the
+    video may have gone live between the prefetch and the download.
+
+    Args:
+        skipped: Optional list; the reason for every refused video is appended to it
+
+    Returns:
+        callable usable as ydl_opts['match_filter']
+    """
+
+    def match_filter(info, *, incomplete=False):
+        status = info.get('live_status')
+        if status in AIRING_STATUSES:
+            reason = f'Premiere or live stream still airing (live_status={status})'
+            if skipped is not None:
+                skipped.append(reason)
+            return reason
+        return None
+
+    return match_filter
+
+
 def default_format_spec(resolved_type):
     """
     yt-dlp format selector used unless the settings pass their own --format.
@@ -424,6 +454,7 @@ def _download_ytdlp_inner(
     format_spec = default_format_spec(resolved_type)
 
     temp_output = temp_dir / 'download.%(ext)s'
+    skipped_airing = []
 
     def build_opts():
         ydl_opts = {
@@ -436,6 +467,7 @@ def _download_ytdlp_inner(
             # Note: noplaylist removed to allow multi-item downloads
             # Multi-item handling is done at prefetch stage with --allow-multiple flag
             'quiet': not logger,  # Show output if logger is provided
+            'match_filter': airing_filter(skipped_airing),
         }
 
         # Enable file:// URLs if needed
@@ -494,6 +526,9 @@ def _download_ytdlp_inner(
         f for f in files if f.suffix in ['.mp4', '.mkv', '.webm', '.mp3', '.m4a', '.ogg', '.opus']
     ]
     if not content_files:
+        if skipped_airing:
+            # Classified as scheduled, so the queue waits for the broadcast to end
+            raise Exception(skipped_airing[-1])
         raise Exception('No media file found after yt-dlp download')
 
     # Use the largest file as the main content
@@ -747,6 +782,7 @@ def download_ytdlp_batch(
         'quiet': not logger,
         'ignoreerrors': True,
         'noplaylist': True,
+        'match_filter': airing_filter(),
     }
 
     # Proxy, cookies and retry settings shared by all yt-dlp calls

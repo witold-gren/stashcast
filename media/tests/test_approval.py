@@ -85,7 +85,7 @@ class ApprovalSyncTest(TestCase):
         patch('media.service.youtube_channel.list_channel_videos', return_value=[VIDEO]).start()
         self.addCleanup(patch.stopall)
 
-    def _prefetch(self, item, tmp_dir, log_path):
+    def _prefetch(self, item, tmp_dir, log_path, allow_live=False):
         item.title = 'Full title'
         item.description = 'Full description'
         item.thumbnail_url = 'https://i.ytimg.com/vi/aaa/hq.jpg'
