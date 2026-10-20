@@ -76,7 +76,7 @@
 
     {% if awaiting_count %}
         <p>
-            <a href="{% url 'admin:media_mediaitem_changelist' %}?status__exact=AWAITING_APPROVAL">
+            <a href="{% url 'review' %}">
                 {% blocktrans count counter=awaiting_count %}{{ counter }} item awaiting approval{% plural %}{{ counter }} items awaiting approval{% endblocktrans %}
             </a>
         </p>

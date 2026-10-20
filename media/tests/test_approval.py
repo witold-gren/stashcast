@@ -291,7 +291,8 @@ class NotificationsTest(TestCase):
         payload = self._sent_payloads()[0]
         self.assertEqual([a['action'] for a in payload['actions']], ['approve', 'reject'])
         self.assertEqual(payload['image'], 'https://i.ytimg.com/x.jpg')
-        self.assertEqual(payload['url'], reverse('item_detail', args=[item.guid]))
+        # A tap opens the review page at this item
+        self.assertEqual(payload['url'], f"{reverse('review')}?item={item.guid}")
         token = payload['approve_url'].split('token=')[1]
         self.assertTrue(check_approval_token(token, item.guid, 'approve'))
 

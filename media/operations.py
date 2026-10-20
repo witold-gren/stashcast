@@ -408,6 +408,21 @@ def reject_item(item):
     return bool(updated)
 
 
+def restore_item(item):
+    """
+    Undo a rejection: put the item back among those awaiting approval.
+
+    Returns:
+        bool: True when the item was restored, False when it was not rejected.
+    """
+    updated = MediaItem.objects.filter(
+        guid=item.guid, status=MediaItem.STATUS_REJECTED
+    ).update(status=MediaItem.STATUS_AWAITING_APPROVAL)
+    if updated:
+        item.refresh_from_db()
+    return bool(updated)
+
+
 def cleanup_expired_group_items(groups=None, logger=None):
     """
     Delete downloaded items older than their group's auto_delete_after_days.

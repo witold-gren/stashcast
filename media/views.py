@@ -1525,15 +1525,28 @@ def item_unarchive_view(request, guid):
 
 def _decide_item(item, action):
     """Apply an approval decision; returns True when the item changed."""
-    from media.operations import approve_item, reject_item
+    from media.operations import approve_item, reject_item, restore_item
 
-    return approve_item(item) if action == 'approve' else reject_item(item)
+    decide = {'approve': approve_item, 'reject': reject_item, 'restore': restore_item}[action]
+    return decide(item)
+
+
+# Session keys of the review page: items skipped for now, and the last rejected one
+# (which the page offers to undo)
+REVIEW_SKIPPED_KEY = 'review_skipped'
+REVIEW_LAST_REJECTED_KEY = 'review_last_rejected'
 
 
 @staff_member_required
 @require_http_methods(['POST'])
 def item_decision_view(request, guid, action):
-    """Download (approve) or reject an item awaiting approval, from the item page."""
+    """Download (approve), reject or restore an item awaiting approval.
+
+    Used by the item page and the review page; a safe ``next`` field in the POST
+    sends the user back where they came from (the review page, for the next item).
+    """
+    from django.utils.http import url_has_allowed_host_and_scheme
+
     from django.contrib import messages
     from django.core.exceptions import PermissionDenied
 
@@ -1548,10 +1561,87 @@ def item_decision_view(request, guid, action):
         messages.error(request, _('This item is no longer awaiting approval.'))
     elif action == 'approve':
         messages.success(request, _('Downloading: %(title)s') % {'title': label})
-    else:
+    elif action == 'reject':
+        request.session[REVIEW_LAST_REJECTED_KEY] = item.guid
         messages.success(request, _('Rejected: %(title)s') % {'title': label})
+    else:
+        request.session.pop(REVIEW_LAST_REJECTED_KEY, None)
+        messages.success(request, _('Back in the queue for approval: %(title)s') % {'title': label})
 
+    next_url = request.POST.get('next', '')
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return redirect(next_url)
     return redirect('item_detail', guid=guid)
+
+
+@staff_member_required
+@require_http_methods(['GET', 'POST'])
+def review_view(request):
+    """Go through the items awaiting approval one at a time: Download, Reject or Skip.
+
+    The oldest item comes first. ``?group=<slug>`` narrows it down to one group and
+    ``?item=<guid>`` opens a given item first (push notifications link here). Skipped
+    items are remembered in the session until the list is started over.
+    """
+    from django.contrib import messages
+    from django.db.models import Count
+    from django.urls import reverse
+    from django.utils.http import urlencode
+
+    group_slug = request.GET.get('group', '')
+    group = _find_group(group_slug) if group_slug else None
+    params = {'group': group.slug} if group else {}
+    here = reverse('review') + (f'?{urlencode(params)}' if params else '')
+
+    skipped = request.session.get(REVIEW_SKIPPED_KEY, [])
+    if request.method == 'POST':
+        guid = request.POST.get('skip', '')
+        if guid and guid not in skipped:
+            request.session[REVIEW_SKIPPED_KEY] = skipped + [guid]
+        return redirect(here)
+    if request.GET.get('reset'):
+        request.session.pop(REVIEW_SKIPPED_KEY, None)
+        messages.info(request, _('Starting over with the skipped items.'))
+        return redirect(here)
+
+    pending = MediaItem.objects.filter(status=MediaItem.STATUS_AWAITING_APPROVAL)
+    if group:
+        pending = pending.filter(group=group)
+    pending = pending.select_related('group').order_by('created_at', 'guid')
+
+    item = None
+    if request.GET.get('item'):
+        item = pending.filter(guid=request.GET['item']).first()
+    if item is None:
+        item = pending.exclude(guid__in=skipped).first()
+
+    last_rejected = None
+    rejected_guid = request.session.get(REVIEW_LAST_REJECTED_KEY)
+    if rejected_guid:
+        last_rejected = MediaItem.objects.filter(
+            guid=rejected_guid, status=MediaItem.STATUS_REJECTED
+        ).first()
+
+    groups = (
+        MediaGroup.objects.filter(items__status=MediaItem.STATUS_AWAITING_APPROVAL)
+        .annotate(awaiting=Count('items'))
+        .order_by('name')
+    )
+
+    context = {
+        **admin.site.each_context(request),
+        'title': _('Review new uploads'),
+        'item': item,
+        'remaining': pending.count(),
+        'skipped_count': pending.filter(guid__in=skipped).count(),
+        'groups': groups,
+        'selected_group': group,
+        'here': here,
+        'last_rejected': last_rejected,
+    }
+    return render(request, 'admin/review.html', context)
 
 
 @csrf_exempt

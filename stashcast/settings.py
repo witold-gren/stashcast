@@ -142,7 +142,7 @@ UNFOLD = {
                     },
                     {
                         'title': _('Awaiting Approval'),
-                        'link': '/admin/media/mediaitem/?status__exact=AWAITING_APPROVAL',
+                        'link': '/admin/tools/review/',
                         'icon': 'pending_actions',
                     },
                 ],

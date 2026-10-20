@@ -42,6 +42,7 @@ from media.views import (
     notifications_view,
     preferences_view,
     push_decision_view,
+    review_view,
     service_worker_view,
     stash_progress_view,
     stash_status_stream,
@@ -118,11 +119,12 @@ urlpatterns = [
         name='item_regenerate_summary',
     ),
     re_path(
-        r'^admin/tools/item/(?P<guid>[^/]+)/(?P<action>approve|reject)/$',
+        r'^admin/tools/item/(?P<guid>[^/]+)/(?P<action>approve|reject|restore)/$',
         item_decision_view,
         name='item_decision',
     ),
     path('admin/tools/notifications/', notifications_view, name='notifications'),
+    path('admin/tools/review/', review_view, name='review'),
     path('admin/tools/preferences/', preferences_view, name='preferences'),
     # Redirect admin index to grid view (must come before admin.site.urls)
     re_path(r'^admin/$', RedirectView.as_view(url='/admin/tools/grid/', permanent=False)),

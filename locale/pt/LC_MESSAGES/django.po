@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-14 22:02+0000\n"
+"POT-Creation-Date: 2026-10-20 16:58+0000\n"
 "PO-Revision-Date: 2026-01-12 22:00+0000\n"
 "Last-Translator: StashCast Team\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -774,7 +774,7 @@ msgstr "Na fila"
 msgid "Prefetching"
 msgstr "Preparando"
 
-#: media/models.py:197 media/notifications.py:156
+#: media/models.py:197 media/notifications.py:159
 #: media/templates/admin/admin_stash_progress.html:264
 #: media/templates/admin/item_detail.html:209
 #: media/templates/media/stash_progress.html:332
@@ -803,7 +803,7 @@ msgstr "Arquivado"
 msgid "Awaiting approval"
 msgstr "Aguardando aprovação"
 
-#: media/models.py:203 media/notifications.py:157
+#: media/models.py:203 media/notifications.py:160
 #: media/templates/admin/item_detail.html:215
 msgid "Rejected"
 msgstr "Rejeitado"
@@ -1019,45 +1019,47 @@ msgstr "item"
 msgid "media items"
 msgstr "itens"
 
-#: media/notifications.py:109
+#: media/notifications.py:110
 #, python-format
 msgid "%(minutes)s min"
 msgstr "%(minutes)s min"
 
-#: media/notifications.py:142
+#: media/notifications.py:143
 #, python-format
 msgid "New: %(title)s"
 msgstr "Novo: %(title)s"
 
-#: media/notifications.py:148
+#: media/notifications.py:149
 #: media/templates/admin/admin_spotify_confirm.html:422
 #: media/templates/admin/item_detail.html:227
 #: media/templates/admin/item_detail.html:269
+#: media/templates/admin/review.html:140
 msgid "Download"
 msgstr "Baixar"
 
-#: media/notifications.py:149 media/templates/admin/item_detail.html:231
+#: media/notifications.py:150 media/templates/admin/item_detail.html:231
+#: media/templates/admin/review.html:145
 msgid "Reject"
 msgstr "Rejeitar"
 
-#: media/notifications.py:158
+#: media/notifications.py:161
 msgid "Already handled"
 msgstr "Já tratado"
 
-#: media/notifications.py:159
+#: media/notifications.py:162
 msgid "Request failed"
 msgstr "A solicitação falhou"
 
-#: media/notifications.py:160
+#: media/notifications.py:163
 msgid "Could not reach StashCast"
 msgstr "Não foi possível conectar ao StashCast"
 
-#: media/notifications.py:178
+#: media/notifications.py:181
 #, python-format
 msgid "Ready: %(title)s"
 msgstr "Pronto: %(title)s"
 
-#: media/service/errors.py:160
+#: media/service/errors.py:162
 msgid ""
 "This video cannot be downloaded with the current configuration (members-"
 "only, private, removed or region-blocked). Not retrying."
@@ -1065,11 +1067,11 @@ msgstr ""
 "Este vídeo não pode ser baixado com a configuração atual (só para membros, "
 "privado, removido ou bloqueado na região). Sem novas tentativas."
 
-#: media/service/errors.py:164
+#: media/service/errors.py:166
 msgid "Not published yet (premiere or scheduled live); waiting until it airs."
 msgstr "Ainda não publicado (estreia ou live agendada); aguardando a exibição."
 
-#: media/service/errors.py:167
+#: media/service/errors.py:169
 msgid ""
 "YouTube refused the request (bot check, sign-in or rate limit). Set "
 "STASHCAST_YTDLP_COOKIES_FILE, or a proxy - see docs/YOUTUBE_AUTH.md."
@@ -1096,22 +1098,22 @@ msgstr ""
 "Abandonado em %(status)s por mais de %(minutes)s min (o worker provavelmente "
 "parou)"
 
-#: media/tasks.py:809
+#: media/tasks.py:811
 #, python-format
 msgid "Prefetch failed: %(error)s"
 msgstr "A pré-busca falhou: %(error)s"
 
-#: media/tasks.py:934 media/tasks.py:990
+#: media/tasks.py:936 media/tasks.py:992
 #, python-format
 msgid "Download failed: %(error)s"
 msgstr "O download falhou: %(error)s"
 
-#: media/tasks.py:1050
+#: media/tasks.py:1053
 #, python-format
 msgid "Processing failed: %(error)s"
 msgstr "O processamento falhou: %(error)s"
 
-#: media/tasks.py:1246
+#: media/tasks.py:1249
 msgid "Removed from the download queue"
 msgstr "Removido da fila de downloads"
 
@@ -1849,6 +1851,7 @@ msgid "Download Subtitles"
 msgstr "Baixar legendas"
 
 #: media/templates/admin/item_detail.html:277
+#: media/templates/admin/review.html:127
 msgid "Source"
 msgstr "Fonte"
 
@@ -2054,6 +2057,66 @@ msgstr "Projeto"
 #: media/templates/admin/preferences.html:242
 msgid "Deployed"
 msgstr "Implantado"
+
+#: media/templates/admin/review.html:4 media/templates/admin/review.html:90
+#: media/views.py:1635
+msgid "Review new uploads"
+msgstr "Revisar vídeos novos"
+
+#: media/templates/admin/review.html:92
+#, python-format
+msgid "%(counter)s awaiting approval"
+msgid_plural "%(counter)s awaiting approval"
+msgstr[0] "%(counter)s aguardando aprovação"
+msgstr[1] "%(counter)s aguardando aprovação"
+
+#: media/templates/admin/review.html:92
+#, python-format
+msgid "%(counter)s skipped"
+msgid_plural "%(counter)s skipped"
+msgstr[0] "%(counter)s pulado"
+msgstr[1] "%(counter)s pulados"
+
+#: media/templates/admin/review.html:98
+msgid "All groups"
+msgstr "Todos os grupos"
+
+#: media/templates/admin/review.html:107 media/views.py:1566
+#, python-format
+msgid "Rejected: %(title)s"
+msgstr "Rejeitado: %(title)s"
+
+#: media/templates/admin/review.html:111
+msgid "Undo"
+msgstr "Desfazer"
+
+#: media/templates/admin/review.html:128
+msgid "Details"
+msgstr "Detalhes"
+
+#: media/templates/admin/review.html:132 media/templates/admin/review.html:178
+msgid "Show more"
+msgstr "Mostrar mais"
+
+#: media/templates/admin/review.html:150
+msgid "Skip"
+msgstr "Pular"
+
+#: media/templates/admin/review.html:157
+msgid "Only skipped items are left."
+msgstr "Restam apenas os itens pulados."
+
+#: media/templates/admin/review.html:158
+msgid "Go through the skipped ones again"
+msgstr "Revisar os pulados novamente"
+
+#: media/templates/admin/review.html:160
+msgid "Nothing is waiting for approval."
+msgstr "Nada aguarda aprovação."
+
+#: media/templates/admin/review.html:178
+msgid "Show less"
+msgstr "Mostrar menos"
 
 #: media/templates/admin/youtube_button.html:4
 #: media/templates/admin/youtube_button.html:61 media/views.py:613
@@ -2338,30 +2401,34 @@ msgstr "Desarquivado: %(title)s"
 msgid "Only archived items can be unarchived."
 msgstr "Só é possível desarquivar itens arquivados."
 
-#: media/views.py:1548
+#: media/views.py:1561
 msgid "This item is no longer awaiting approval."
 msgstr "Este item não aguarda mais aprovação."
 
-#: media/views.py:1550
+#: media/views.py:1563
 #, python-format
 msgid "Downloading: %(title)s"
 msgstr "Baixando: %(title)s"
 
-#: media/views.py:1552
+#: media/views.py:1569
 #, python-format
-msgid "Rejected: %(title)s"
-msgstr "Rejeitado: %(title)s"
+msgid "Back in the queue for approval: %(title)s"
+msgstr "Novamente aguardando aprovação: %(title)s"
 
-#: media/views.py:1601
+#: media/views.py:1606
+msgid "Starting over with the skipped items."
+msgstr "Recomeçando com os itens pulados."
+
+#: media/views.py:1691
 msgid "Test notification - push works on this device."
 msgstr "Notificação de teste – o push funciona neste dispositivo."
 
-#: media/views.py:1609
+#: media/views.py:1699
 #, python-format
 msgid "Test notification sent to %(count)s device(s)."
 msgstr "Notificação de teste enviada para %(count)s dispositivo(s)."
 
-#: media/views.py:1612
+#: media/views.py:1702
 msgid "No device received the notification."
 msgstr "Nenhum dispositivo recebeu a notificação."
 

@@ -17,6 +17,7 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.templatetags.static import static
 from django.urls import reverse
+from django.utils.http import urlencode
 from django.utils.translation import gettext as _
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,8 @@ def notify_approval_request(item):
                 {'action': 'approve', 'title': _('Download')},
                 {'action': 'reject', 'title': _('Reject')},
             ],
+            # A tap opens the review page at this item, ready to go on to the next ones
+            'url': '{}?{}'.format(reverse('review'), urlencode({'item': item.guid})),
             # Keep it on screen until answered
             'requireInteraction': True,
             # The service worker is plain JS and cannot translate; it shows these after a

@@ -1,0 +1,200 @@
+{% extends "admin/base_site.html" %}
+{% load i18n media_filters %}
+
+{% block title %}{% trans "Review new uploads" %}{% endblock %}
+
+{% block extrastyle %}
+<style>
+    :root {
+        --sc-panel-bg: var(--body-bg, #ffffff);
+        --sc-panel-fg: var(--body-fg, #222222);
+        --sc-muted: var(--body-quiet-color, #6b7280);
+        --sc-border: var(--hairline-color, #d4d4d4);
+        --sc-primary: var(--primary, #417690);
+        --sc-primary-fg: var(--primary-fg, #ffffff);
+        --sc-surface: var(--darkened-bg, rgba(0,0,0,0.03));
+    }
+    .dark {
+        --sc-panel-bg: #1e293b;
+        --sc-panel-fg: #e2e8f0;
+        --sc-muted: #94a3b8;
+        --sc-border: #334155;
+        --sc-primary: #60a5fa;
+        --sc-primary-fg: #ffffff;
+        --sc-surface: rgba(255,255,255,0.06);
+    }
+    .review { max-width: 860px; margin: 0 auto; color: var(--sc-panel-fg); }
+    .review-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+    .review-head h1 { margin: 0; }
+    .review-head .count { color: var(--sc-muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+    .chips a {
+        padding: 4px 12px; border-radius: 999px; border: 1px solid var(--sc-border);
+        color: var(--sc-panel-fg); text-decoration: none; font-size: 13px;
+    }
+    .chips a.active { background: var(--sc-primary); border-color: var(--sc-primary); color: var(--sc-primary-fg); }
+    .undo {
+        display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+        padding: 10px 14px; margin: 12px 0; border-radius: 8px;
+        background: var(--sc-surface); border: 1px solid var(--sc-border); font-size: 14px;
+    }
+    .undo form { margin: 0; }
+    .undo button {
+        padding: 6px 14px; border-radius: 6px; border: 1px solid var(--sc-border);
+        background: var(--sc-panel-bg); color: var(--sc-panel-fg); cursor: pointer; font-weight: 600;
+    }
+    .card {
+        background: var(--sc-panel-bg); border: 1px solid var(--sc-border); border-radius: 10px;
+        padding: 20px; margin-bottom: 110px;
+    }
+    .card img.thumb { width: 100%; max-width: 560px; border-radius: 8px; display: block; margin-bottom: 14px; }
+    .card h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.35; }
+    .meta { color: var(--sc-muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 14px; }
+    .meta a { color: inherit; }
+    .description {
+        font-size: 14px; line-height: 1.55; overflow-wrap: anywhere;
+        max-height: 7.8em; overflow: hidden; position: relative;
+    }
+    .description.open { max-height: none; }
+    .description:not(.open)::after {
+        content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2.5em;
+        background: linear-gradient(transparent, var(--sc-panel-bg));
+    }
+    .more { background: none; border: none; color: var(--sc-primary); cursor: pointer; padding: 6px 0; font-size: 14px; }
+    .actions {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+        display: flex; gap: 10px; justify-content: center;
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        background: var(--sc-panel-bg); border-top: 1px solid var(--sc-border);
+    }
+    .actions form { margin: 0; flex: 0 1 220px; }
+    .actions button {
+        width: 100%; padding: 14px 10px; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;
+        border: 1px solid var(--sc-border); background: var(--sc-panel-bg); color: var(--sc-panel-fg);
+    }
+    .actions .approve { background: var(--sc-primary); border-color: var(--sc-primary); color: var(--sc-primary-fg); }
+    .actions .reject { color: #dc2626; border-color: #dc2626; }
+    .actions kbd { font-weight: 400; opacity: .6; font-size: 12px; margin-left: 6px; }
+    .empty { text-align: center; padding: 50px 20px; color: var(--sc-muted); }
+    .empty .big { font-size: 42px; }
+    @media (max-width: 700px) {
+        .actions kbd { display: none; }
+        .card { padding: 14px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="review">
+    <div class="review-head">
+        <h1>{% trans "Review new uploads" %}</h1>
+        <span class="count">
+            {% blocktrans count counter=remaining %}{{ counter }} awaiting approval{% plural %}{{ counter }} awaiting approval{% endblocktrans %}{% if skipped_count %} · {% blocktrans count counter=skipped_count %}{{ counter }} skipped{% plural %}{{ counter }} skipped{% endblocktrans %}{% endif %}
+        </span>
+    </div>
+
+    {% if groups %}
+        <div class="chips">
+            <a href="{% url 'review' %}" class="{% if not selected_group %}active{% endif %}">{% trans "All groups" %}</a>
+            {% for group in groups %}
+                <a href="{% url 'review' %}?group={{ group.slug|urlencode }}" class="{% if selected_group and selected_group.pk == group.pk %}active{% endif %}">{{ group.name }} ({{ group.awaiting }})</a>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if last_rejected %}
+        <div class="undo">
+            <span>{% blocktrans with title=last_rejected.title|default:last_rejected.guid %}Rejected: {{ title }}{% endblocktrans %}</span>
+            <form method="post" action="{% url 'item_decision' last_rejected.guid 'restore' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ here }}">
+                <button type="submit" data-key="u">{% trans "Undo" %}</button>
+            </form>
+        </div>
+    {% endif %}
+
+    {% if item %}
+        <div class="card">
+            {% if item.thumbnail_url %}
+                <img class="thumb" src="{{ item.thumbnail_url }}" alt="" referrerpolicy="no-referrer">
+            {% endif %}
+            <h2>{{ item.title|default:item.source_url }}</h2>
+            <div class="meta">
+                {% if item.group %}<span>📁 {{ item.group.name }}</span>{% endif %}
+                {% if item.author and item.author != item.group.name %}<span>{{ item.author }}</span>{% endif %}
+                {% if item.publish_date %}<span>{{ item.publish_date|date:"j E Y, H:i" }}</span>{% endif %}
+                {% if item.duration_seconds %}<span>⏱ {{ item.duration_seconds|duration }}</span>{% endif %}
+                <a href="{{ item.webpage_url|default:item.source_url }}" target="_blank" rel="noopener">{% trans "Source" %} ↗</a>
+                <a href="{% url 'item_detail' item.guid %}">{% trans "Details" %}</a>
+            </div>
+            {% if item.description %}
+                <div class="description" id="description">{{ item.description|urlize|linebreaksbr }}</div>
+                <button type="button" class="more" id="more">{% trans "Show more" %}</button>
+            {% endif %}
+        </div>
+
+        <div class="actions">
+            <form method="post" action="{% url 'item_decision' item.guid 'approve' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ here }}">
+                <button type="submit" class="approve" data-key="d">{% trans "Download" %}<kbd>D</kbd></button>
+            </form>
+            <form method="post" action="{% url 'item_decision' item.guid 'reject' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ here }}">
+                <button type="submit" class="reject" data-key="r">{% trans "Reject" %}<kbd>R</kbd></button>
+            </form>
+            <form method="post" action="{{ here }}">
+                {% csrf_token %}
+                <input type="hidden" name="skip" value="{{ item.guid }}">
+                <button type="submit" data-key="s">{% trans "Skip" %}<kbd>S</kbd></button>
+            </form>
+        </div>
+    {% else %}
+        <div class="empty">
+            <div class="big">✓</div>
+            {% if skipped_count %}
+                <p>{% trans "Only skipped items are left." %}</p>
+                <p><a href="{{ here }}{% if '?' in here %}&amp;{% else %}?{% endif %}reset=1">{% trans "Go through the skipped ones again" %}</a></p>
+            {% else %}
+                <p>{% trans "Nothing is waiting for approval." %}</p>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+
+<script>
+(function () {
+    const more = document.getElementById('more');
+    const description = document.getElementById('description');
+    if (more && description) {
+        // Short descriptions fit without the toggle
+        if (description.scrollHeight <= description.clientHeight + 4) {
+            description.classList.add('open');
+            more.hidden = true;
+        }
+        more.addEventListener('click', () => {
+            const open = description.classList.toggle('open');
+            more.textContent = open ? '{% trans "Show less" as t %}{{ t|escapejs }}' : '{% trans "Show more" as t %}{{ t|escapejs }}';
+        });
+    }
+
+    // D / R / S / U on the keyboard; one press only, a double press would act twice
+    let sent = false;
+    document.addEventListener('keydown', (event) => {
+        if (sent || event.metaKey || event.ctrlKey || event.altKey) return;
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return;
+        const button = document.querySelector(`button[data-key="${event.key.toLowerCase()}"]`);
+        if (button) {
+            sent = true;
+            event.preventDefault();
+            button.form.submit();
+        }
+    });
+    document.querySelectorAll('form').forEach((form) => form.addEventListener('submit', (event) => {
+        if (sent && event.isTrusted) { event.preventDefault(); return; }
+        sent = true;
+    }));
+})();
+</script>
+{% endblock %}
