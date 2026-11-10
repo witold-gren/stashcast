@@ -861,6 +861,7 @@ class FeedProtectionUITest(TestCase):
 
     def test_home_page_does_not_expose_feed_urls(self):
         """Test that home page does not show feed URLs with tokens"""
+        self.client.login(username='testuser', password='password')
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
@@ -871,6 +872,42 @@ class FeedProtectionUITest(TestCase):
         # Should link to admin feed links page instead
         self.assertIn('/admin/tools/feeds/', content)
         self.assertIn('Subscribe to feeds', content)
+
+    def test_home_page_hides_shortcuts_from_anonymous_visitors(self):
+        """Signed out, the home page shows only the logo and the tagline"""
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('Capture, stash, and stream your media.', content)
+        for path in (
+            '/admin/tools/feeds/',
+            '/admin/tools/add-url/',
+            '/admin/tools/grid/',
+            '/admin/tools/list/',
+            '/admin/tools/review/',
+            'href="/admin/"',
+        ):
+            self.assertNotIn(path, content)
+
+    def test_home_page_shows_shortcuts_to_staff(self):
+        """Signed in, the home page links to the add form, both views and the review"""
+        MediaItem.objects.create(
+            source_url='https://youtu.be/pending',
+            slug='pending',
+            title='pending',
+            status=MediaItem.STATUS_AWAITING_APPROVAL,
+        )
+        self.client.login(username='testuser', password='password')
+        response = self.client.get('/')
+        content = response.content.decode()
+        for path in (
+            '/admin/tools/add-url/',
+            '/admin/tools/grid/',
+            '/admin/tools/list/',
+            '/admin/tools/review/',
+        ):
+            self.assertIn(path, content)
+        self.assertEqual(response.context['awaiting_count'], 1)
 
     @override_settings(REQUIRE_USER_TOKEN_FOR_FEEDS=True)
     def test_feed_links_page_shows_protected_banner(self):

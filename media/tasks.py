@@ -1262,14 +1262,126 @@ def queue_transcription(items):
     Returns:
         int: How many were queued.
     """
+    # With a transcription window configured, items only wait in the queue: the
+    # periodic process_transcription_window task picks them up while the window is open.
+    immediate = transcription_window() is None
+
     count = 0
     for item in items:
         item.transcript_status = MediaItem.TRANSCRIPT_QUEUED
         item.transcript_error = ''
         item.save(update_fields=['transcript_status', 'transcript_error', 'updated_at'])
-        transcribe_media(item.guid)
+        if immediate:
+            transcribe_media(item.guid)
         count += 1
     return count
+
+
+def transcription_window():
+    """Parse STASHCAST_TRANSCRIPTION_WINDOW into a ``(start, end)`` pair of times.
+
+    Returns:
+        tuple[datetime.time, datetime.time] | None: None when transcription runs
+        straight after the download (no window, or a value that cannot be parsed).
+    """
+    import datetime as dt
+
+    raw = (getattr(settings, 'STASHCAST_TRANSCRIPTION_WINDOW', '') or '').strip()
+    if not raw:
+        return None
+    try:
+        start_raw, end_raw = (part.strip() for part in raw.split('-', 1))
+        start = dt.datetime.strptime(start_raw, '%H:%M').time()
+        end = dt.datetime.strptime(end_raw, '%H:%M').time()
+    except ValueError:
+        _logger.warning(
+            'Ignoring STASHCAST_TRANSCRIPTION_WINDOW=%r - expected HH:MM-HH:MM', raw
+        )
+        return None
+    if start == end:
+        return None
+    return start, end
+
+
+def in_transcription_window(now=None):
+    """Whether a transcription may start now.
+
+    Always True when no window is configured. Windows that cross midnight
+    ('23:00-04:00') are supported; the end time itself is outside the window.
+
+    Args:
+        now: Aware datetime to check instead of the current time (for tests)
+    """
+    window = transcription_window()
+    if window is None:
+        return True
+    start, end = window
+    current = timezone.localtime(now).time()
+    if start < end:
+        return start <= current < end
+    return current >= start or current < end
+
+
+def _claim_next_queued_transcription():
+    """Atomically take the oldest waiting item off the transcription queue.
+
+    The conditional update makes sure two worker threads never pick the same item.
+
+    Returns:
+        MediaItem | None: The claimed item, already marked as running.
+    """
+    candidates = (
+        MediaItem.objects.filter(transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+        .order_by('updated_at', 'pk')
+        .values_list('pk', flat=True)
+    )
+    for pk in candidates[:10]:
+        claimed = MediaItem.objects.filter(
+            pk=pk, transcript_status=MediaItem.TRANSCRIPT_QUEUED
+        ).update(transcript_status=MediaItem.TRANSCRIPT_RUNNING)
+        if claimed:
+            return MediaItem.objects.get(pk=pk)
+    return None
+
+
+def run_transcription_window():
+    """Transcribe waiting items one by one for as long as the window stays open.
+
+    One item at a time, never alongside another transcription, so the speech-to-text
+    machine only ever has a single job. Does nothing when no window is configured -
+    then every item has a task of its own (see queue_transcription).
+
+    Returns:
+        int: How many items were attempted.
+    """
+    if transcription_window() is None or not settings.STASHCAST_WHISPER_ENABLED:
+        return 0
+
+    attempted = 0
+    while in_transcription_window():
+        # Another thread (an earlier tick of this task) is already working the queue
+        if MediaItem.objects.filter(transcript_status=MediaItem.TRANSCRIPT_RUNNING).exists():
+            break
+        item = _claim_next_queued_transcription()
+        if item is None:
+            break
+        attempted += 1
+        try:
+            transcribe_item(item)
+        except Exception as e:
+            item.transcript_status = MediaItem.TRANSCRIPT_FAILED
+            item.transcript_error = str(e)
+            item.save(update_fields=['transcript_status', 'transcript_error', 'updated_at'])
+    return attempted
+
+
+@db_periodic_task(crontab(minute='*/5'), priority=PRIORITY_TRANSCRIPTION)
+def process_transcription_window():
+    """Periodic task: work through the transcription queue inside the configured window.
+
+    Only does anything when STASHCAST_TRANSCRIPTION_WINDOW is set.
+    """
+    run_transcription_window()
 
 
 @db_task(priority=PRIORITY_TRANSCRIPTION)

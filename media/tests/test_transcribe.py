@@ -1008,3 +1008,110 @@ class TranscriptInDescriptionTest(TestCase):
         self._item(merge=True, transcript='jedno dwa trzy cztery piec szesc siedem osiem')
 
         self.assertIn('osiem', self._item_description())
+
+
+class TranscriptionWindowTest(TestCase):
+    """STASHCAST_TRANSCRIPTION_WINDOW defers transcriptions to a time of day."""
+
+    def _item(self, slug='a', **kwargs):
+        return MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            requested_type=MediaItem.REQUESTED_TYPE_AUDIO,
+            slug=slug,
+            title=slug,
+            status=MediaItem.STATUS_READY,
+            content_path='content.m4a',
+            **kwargs,
+        )
+
+    def _at(self, hour, minute=0):
+        import datetime as dt
+
+        return timezone.make_aware(dt.datetime(2026, 11, 10, hour, minute))
+
+    @override_settings(STASHCAST_TRANSCRIPTION_WINDOW='')
+    def test_without_a_window_transcription_starts_immediately(self):
+        from media.tasks import in_transcription_window, queue_transcription
+
+        item = self._item()
+        with patch('media.tasks.transcribe_media') as task:
+            queue_transcription([item])
+        task.assert_called_once_with(item.guid)
+        self.assertTrue(in_transcription_window(self._at(14)))
+
+    @override_settings(STASHCAST_TRANSCRIPTION_WINDOW='02:00-05:00')
+    def test_with_a_window_items_only_wait_in_the_queue(self):
+        from media.tasks import queue_transcription
+
+        item = self._item()
+        with patch('media.tasks.transcribe_media') as task:
+            queue_transcription([item])
+        task.assert_not_called()
+        item.refresh_from_db()
+        self.assertEqual(item.transcript_status, MediaItem.TRANSCRIPT_QUEUED)
+
+    @override_settings(STASHCAST_TRANSCRIPTION_WINDOW='02:00-05:00')
+    def test_window_bounds(self):
+        from media.tasks import in_transcription_window
+
+        self.assertFalse(in_transcription_window(self._at(1, 59)))
+        self.assertTrue(in_transcription_window(self._at(2, 0)))
+        self.assertTrue(in_transcription_window(self._at(4, 59)))
+        self.assertFalse(in_transcription_window(self._at(5, 0)))
+
+    @override_settings(STASHCAST_TRANSCRIPTION_WINDOW='23:00-04:00')
+    def test_window_may_cross_midnight(self):
+        from media.tasks import in_transcription_window
+
+        self.assertTrue(in_transcription_window(self._at(23, 30)))
+        self.assertTrue(in_transcription_window(self._at(3, 0)))
+        self.assertFalse(in_transcription_window(self._at(12, 0)))
+
+    @override_settings(STASHCAST_TRANSCRIPTION_WINDOW='nonsense')
+    def test_unparsable_window_falls_back_to_immediate(self):
+        from media.tasks import transcription_window
+
+        self.assertIsNone(transcription_window())
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True, STASHCAST_TRANSCRIPTION_WINDOW='02:00-05:00')
+    def test_periodic_run_works_the_queue_only_inside_the_window(self):
+        from media.tasks import run_transcription_window
+
+        first = self._item('first', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+        second = self._item('second', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+        self._item('done', transcript_status=MediaItem.TRANSCRIPT_DONE)
+
+        def fake_transcribe(item, logger=None):
+            item.transcript_status = MediaItem.TRANSCRIPT_DONE
+            item.save(update_fields=['transcript_status'])
+            return 1
+
+        with patch('media.tasks.in_transcription_window', return_value=False), patch(
+            'media.tasks.transcribe_item', side_effect=fake_transcribe
+        ) as transcribe:
+            self.assertEqual(run_transcription_window(), 0)
+        transcribe.assert_not_called()
+
+        with patch('media.tasks.in_transcription_window', return_value=True), patch(
+            'media.tasks.transcribe_item', side_effect=fake_transcribe
+        ) as transcribe:
+            self.assertEqual(run_transcription_window(), 2)
+
+        self.assertEqual(
+            [call.args[0].pk for call in transcribe.call_args_list], [first.pk, second.pk]
+        )
+
+    @override_settings(STASHCAST_WHISPER_ENABLED=True, STASHCAST_TRANSCRIPTION_WINDOW='02:00-05:00')
+    def test_failure_is_recorded_and_the_queue_moves_on(self):
+        from media.tasks import run_transcription_window
+
+        bad = self._item('bad', transcript_status=MediaItem.TRANSCRIPT_QUEUED)
+
+        with patch('media.tasks.in_transcription_window', return_value=True), patch(
+            'media.tasks.transcribe_item', side_effect=TranscriptionError('server down')
+        ):
+            run_transcription_window()
+
+        bad.refresh_from_db()
+        self.assertEqual(bad.transcript_status, MediaItem.TRANSCRIPT_FAILED)
+        self.assertEqual(bad.transcript_error, 'server down')

@@ -18,6 +18,44 @@ from media.models import MediaItem
 User = get_user_model()
 
 
+class ChronologicalOrderTest(TestCase):
+    """Grid and list are ordered by publication date, not by when an item was added.
+
+    A backfilled October video downloaded in November used to land between the
+    November ones.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_superuser('admin', 'admin@test.com', 'password')
+        self.client.login(username='admin', password='password')
+
+    def _item(self, slug, published):
+        return MediaItem.objects.create(
+            source_url=f'https://youtu.be/{slug}',
+            slug=slug,
+            title=slug,
+            media_type='video',
+            status=MediaItem.STATUS_READY,
+            publish_date=published,
+            downloaded_at=timezone.now(),
+        )
+
+    def test_grid_and_list_are_newest_published_first(self):
+        tz = datetime.timezone.utc
+        # Created in this order: the October one is added last, as a backfill would
+        self._item('nov-10', datetime.datetime(2026, 11, 10, tzinfo=tz))
+        self._item('nov-2', datetime.datetime(2026, 11, 2, tzinfo=tz))
+        self._item('no-date', None)
+        self._item('oct-15', datetime.datetime(2026, 10, 15, tzinfo=tz))
+
+        for url in ('/admin/tools/grid/', '/admin/tools/list/'):
+            response = self.client.get(url)
+            slugs = [entry['item'].slug for entry in response.context['items']]
+            # No publish date falls back to the download date - today, so first
+            self.assertEqual(slugs, ['no-date', 'nov-10', 'nov-2', 'oct-15'], url)
+
+
 class AdminGridViewTest(TestCase):
     """Test the grid view (/admin/tools/grid/)"""
 

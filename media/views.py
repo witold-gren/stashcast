@@ -6,7 +6,8 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Q
+from django.db.models import F, Q
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
@@ -25,6 +26,15 @@ from media.tasks import (
 )
 from media.operations import find_group_for_channel, resolve_requested_type
 from media.utils import build_media_url
+
+# Grid and list order: newest first by the date the source published the episode, so a
+# backfilled October video never lands between November ones just because it was
+# downloaded later. Items whose publish date is unknown fall back to the download date,
+# then to when they were added.
+CHRONOLOGICAL_ORDER = (
+    Coalesce('publish_date', 'downloaded_at', 'created_at').desc(),
+    F('created_at').desc(),
+)
 
 
 def _build_media_url(item, filename, request=None):
@@ -96,8 +106,17 @@ def _assign_group(item, group):
 
 
 def home_view(request):
-    """Landing page with quick access to add URLs."""
-    return render(request, 'media/home.html')
+    """Landing page.
+
+    Anonymous visitors only see the logo and the tagline; the shortcuts into the admin
+    tools, the feeds and the add form are for a signed-in staff user.
+    """
+    context = {}
+    if request.user.is_staff:
+        context['awaiting_count'] = MediaItem.objects.filter(
+            status=MediaItem.STATUS_AWAITING_APPROVAL
+        ).count()
+    return render(request, 'media/home.html', context)
 
 
 def manifest_view(request):
@@ -1153,7 +1172,7 @@ def grid_view(request):
     items = (
         MediaItem.objects.filter(status=MediaItem.STATUS_READY)
         .select_related('group')
-        .order_by('-created_at')
+        .order_by(*CHRONOLOGICAL_ORDER)
     )
 
     if media_type != 'all':
@@ -1223,7 +1242,7 @@ def list_view(request):
     items = (
         MediaItem.objects.filter(status=MediaItem.STATUS_READY)
         .select_related('group')
-        .order_by('-created_at')
+        .order_by(*CHRONOLOGICAL_ORDER)
     )
 
     if media_type != 'all':

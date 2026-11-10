@@ -568,6 +568,14 @@ STASHCAST_WHISPER_TIMEOUT_SECONDS = int(
     os.environ.get('STASHCAST_WHISPER_TIMEOUT_SECONDS', '300')
 )
 
+# When transcriptions may run, as 'HH:MM-HH:MM' in local time (TIME_ZONE), e.g.
+# '02:00-05:00'. Empty (the default) transcribes straight after the download, as before.
+# With a window set, items only wait in the queue and a periodic task works through them
+# one at a time while the window is open - so a small machine (a Jetson, say) is not
+# loaded while you use it. A window may cross midnight ('23:00-04:00'). A transcription
+# that starts before the window closes is allowed to finish; no new one starts after it.
+STASHCAST_TRANSCRIPTION_WINDOW = os.environ.get('STASHCAST_TRANSCRIPTION_WINDOW', '').strip()
+
 # Whether a transcript is merged into the episode description is decided per group
 # (MediaGroup.transcript_in_description), because it suits short episodes and ruins long
 # ones. The settings below only control how it looks when a group asks for it.

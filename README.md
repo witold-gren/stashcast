@@ -423,6 +423,7 @@ is offered to podcast clients through the feed. See
 - `STASHCAST_WHISPER_LANGUAGE`: Language hint (default: site language)
 - `STASHCAST_WHISPER_WINDOW_SECONDS`: Audio window length in seconds (default: 15)
 - `STASHCAST_WHISPER_TIMEOUT_SECONDS`: Timeout per window (default: 300)
+- `STASHCAST_TRANSCRIPTION_WINDOW`: Run transcriptions only in this time window, e.g. `02:00-05:00` (default: straight after download)
 
 ##### Video playback on Apple Podcasts / iOS
 

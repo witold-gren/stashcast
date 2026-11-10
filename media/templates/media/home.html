@@ -100,6 +100,28 @@
             box-shadow: 0 18px 38px rgba(79, 179, 255, 0.35);
             filter: brightness(1.03);
         }
+        .cta.secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text);
+            box-shadow: none;
+            gap: 8px;
+        }
+        .cta.secondary:hover {
+            border-color: rgba(79, 179, 255, 0.4);
+            background: rgba(79, 179, 255, 0.08);
+            box-shadow: none;
+        }
+        .badge {
+            min-width: 20px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: var(--accent);
+            color: #0b1220;
+            font-size: 12px;
+            font-weight: 700;
+            text-align: center;
+        }
         .note {
             font-size: 13px;
             color: var(--muted);
@@ -195,12 +217,20 @@
                 <p class="lede">
                     {% trans "Add any URL supported by yt-dlp and StashCast will download, process, and publish it to your feeds. Jump straight to the add form to start a new download." %}
                 </p>
+                {% if user.is_staff %}
                 <div class="cta-row">
-                    <a class="cta" href="{% url 'admin_stash_form' %}">{% trans "Add" %}</a>
-                    <span class="note">{% trans "Requires an admin login." %}</span>
+                    <a class="cta" href="{% url 'admin_stash_form' %}">{% trans "Add URL" %}</a>
+                    <a class="cta secondary" href="{% url 'grid_view' %}">{% trans "Grid View" %}</a>
+                    <a class="cta secondary" href="{% url 'list_view' %}">{% trans "List View" %}</a>
+                    <a class="cta secondary" href="{% url 'review' %}">
+                        {% trans "Awaiting Approval" %}
+                        {% if awaiting_count %}<span class="badge">{{ awaiting_count }}</span>{% endif %}
+                    </a>
                 </div>
+                {% endif %}
             </div>
         </div>
+        {% if user.is_staff %}
         <div class="feeds">
             <a class="feed-card" href="/admin/tools/grid/?type=audio">
                 <img src="{% static 'media/feed-audio.png' %}" alt="{% trans 'Audio feed' %}">
@@ -225,6 +255,7 @@
                 <span>{% trans "Manage media items and jobs" %}</span>
             </a>
         </div>
+        {% endif %}
     </main>
 </body>
 </html>

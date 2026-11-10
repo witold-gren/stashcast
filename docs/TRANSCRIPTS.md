@@ -26,6 +26,23 @@ shared Docker network (then `whisper` is the container name) or by host and port
 | `STASHCAST_WHISPER_LANGUAGE` | *(auto-detect)* | Language of the **audio**, e.g. `pl` |
 | `STASHCAST_WHISPER_WINDOW_SECONDS` | `15` | Length of each audio window (minimum 5) |
 | `STASHCAST_WHISPER_TIMEOUT_SECONDS` | `300` | Socket timeout for one window |
+| `STASHCAST_TRANSCRIPTION_WINDOW` | *(empty)* | When transcriptions run, e.g. `02:00-05:00`; empty = straight after the download |
+
+## Transcribing at night
+
+Transcription is heavy, and on a small machine (a Jetson, for example) it gets in the way
+of everything else. Set a time window and transcriptions are no longer started right
+after a download - items wait in the queue instead, and a periodic task works through
+them one at a time while the window is open:
+
+```bash
+STASHCAST_TRANSCRIPTION_WINDOW=02:00-05:00
+```
+
+Times are local (`TIME_ZONE`), and a window may cross midnight (`23:00-04:00`). The
+window is checked before each item: one that starts before the window closes is allowed
+to finish, but no new one starts after it. The window applies to every transcription,
+including those queued by hand from the admin.
 
 ## Language
 
